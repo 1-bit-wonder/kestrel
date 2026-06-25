@@ -114,10 +114,12 @@ go build ./...
 go test ./...
 sudo ./agent            # loads probes — VM ONLY, never the host
 
-# --- Infra ---
-nixos-rebuild build-vm  # build the dev VM from configuration.nix
-nix flake check         # runs nixosTest integration tests
-terraform -chdir=infra/terraform plan
+# --- Infra (Nix flake at repo root) ---
+nix develop             # host devShell: go, clang, llvm, bpftool, libbpf, node, pnpm
+nix run .#vm            # boot the throwaway dev VM (repo mounted at ~/kestrel via 9p)
+                        #   KESTREL_SRC=/path nix run .#vm   # if not run from the repo root
+nix flake check         # eval the flake (+ nixosTest once it exists — Phase 4)
+terraform -chdir=infra/terraform plan   # TODO (Phase 4)
 ```
 
 When you add a real command, update this section so it stays accurate.
@@ -179,8 +181,8 @@ When you add a real command, update this section so it stays accurate.
 > Update this section as the project progresses so the agent always knows where
 > things stand.
 
-- **Phase:** 1 (core loop) — **app side built & verified**; agent side pending
-  (needs the VM).
+- **Phase:** 1 (core loop) — **app side built & verified**; **dev VM +
+  toolchain built** (Nix flake); agent code is the next thing to write.
 - **Working:** The SvelteKit app runs end-to-end. `/app` has the Zod event
   schema (the agent↔app contract, `src/lib/schema/event.ts`), a Drizzle schema
   (accounts→hosts→events/rules/alerts, multi-tenancy-ready), the Zod-validated
@@ -193,10 +195,23 @@ When you add a real command, update this section so it stays accurate.
   has no C compiler (toolchain lives in the VM) so the native `better-sqlite3`
   driver can't build here. PGlite needs no native build and gives real Postgres
   dialect parity with prod. Drizzle calls are async as a result.
-- **Next (Phase 1 completion, in the VM):** the Go agent — C `execve` probe →
-  ring buffer → `cilium/ebpf`+`bpf2go` → POST batches to `/api/ingest`. Must
-  run in the dev VM (Golden Rule #1). Then Phase 2: process-tree cache + tree
-  view (8.2) and host overview (8.6).
-- **Known gaps / TODO:** `/agent` and `/infra` are empty stubs; no rule engine
-  yet (8.5); no Playwright e2e yet; `pnpm dev` persists to `./kestrel-pgdata`
-  (gitignored).
+- **Infra note:** root `flake.nix` + `infra/nix/vm.nix` give a host `nix develop`
+  toolchain and a one-command throwaway dev VM (`nix run .#vm`, tmpfs root via
+  `diskImage = null`) — pinned `nixos-25.05` (kernel ≫ 5.8, BTF on for CO-RE),
+  repo mounted at `~/kestrel` over 9p, SSH on host `2222`. Verified by `nix flake
+  check` (full eval, no full build — that compiles a kernel+QEMU). Compiling
+  probes on the host is fine; **loading** them is VM-only (Golden Rule #1).
+- **Dev split (important):** the SvelteKit **app runs on the HOST** (`cd app &&
+  pnpm dev` → localhost:5173); only the **agent runs in the VM**. Do NOT run the
+  app over 9p — Vite reading `node_modules` over 9p is unusably slow and pnpm's
+  symlink layout corrupts across the 9p boundary. `node_modules` stays
+  host-native. The agent ships events *outbound* to the host app at
+  `http://10.0.2.2:5173/api/ingest` (`10.0.2.2` = host from the VM).
+- **Next (Phase 1 completion):** write the Go agent — C `execve` probe → ring
+  buffer → `cilium/ebpf`+`bpf2go` → POST batches to `/api/ingest`. Author in
+  `nix develop`; **load/run only in the VM** (Golden Rule #1). Then Phase 2:
+  process-tree cache + tree view (8.2) and host overview (8.6).
+- **Known gaps / TODO:** `/agent` is an empty stub (toolchain now exists for it);
+  `infra/terraform` + the `nixosTest` integration test are Phase 4; no rule
+  engine yet (8.5); no Playwright e2e yet; `pnpm dev` persists to
+  `./kestrel-pgdata` (gitignored).

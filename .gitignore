@@ -4,3 +4,5 @@
 result
 result-*
 .direnv
+*.qcow2
+.pnpm-store/
