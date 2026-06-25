@@ -1,7 +1,24 @@
-# 🦅 Kestrel
+<div align="center">
 
-> Single-host Linux runtime-security & observability — the kernel-level
-> visibility of Falco with the live UI the kernel-native tools don't ship.
+<img src="assets/kestrel-banner.svg" alt="Kestrel — single-host eBPF runtime security & observability" width="760" />
+
+<p><em>The kernel-level visibility of Falco, with the live UI the kernel-native tools don't ship.</em></p>
+
+![Svelte 5](https://img.shields.io/badge/Svelte%205-FF3E00?logo=svelte&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+![Go](https://img.shields.io/badge/Go-00ADD8?logo=go&logoColor=white)
+![eBPF](https://img.shields.io/badge/eBPF-1a1a1a?logo=linux&logoColor=white)
+![Postgres](https://img.shields.io/badge/Postgres-4169E1?logo=postgresql&logoColor=white)
+![Tailwind](https://img.shields.io/badge/Tailwind-06B6D4?logo=tailwindcss&logoColor=white)
+![Nix](https://img.shields.io/badge/Nix-5277C3?logo=nixos&logoColor=white)
+![status](https://img.shields.io/badge/status-Phase%201%20·%20core%20loop-34d399)
+
+<a href="#running-the-app-dev"><b>Quickstart</b></a> ·
+<a href="./SPEC.md"><b>Spec</b></a> ·
+<a href="#dashboard-views"><b>Views</b></a> ·
+<a href="#roadmap"><b>Roadmap</b></a>
+
+</div>
 
 Kestrel traces kernel events (process exec, file access, network connections)
 with an **eBPF** agent and streams them to a **SvelteKit** web app that renders
@@ -19,16 +36,25 @@ Kubernetes) and **observe-only** (no enforcement) in v1.
 
 ## Architecture
 
-```
-┌──────────────── Linux host (VM in dev, VPS in prod), kernel ≥ 5.8 ───────────┐
-│                                                                              │
-│  eBPF probes (C) ──ring buffer──▶ Go agent (cilium/ebpf)                      │
-│  execve/open/connect             decode · enrich · batch                     │
-│                                          │ HTTP POST (JSON, Zod contract)     │
-│                                          ▼                                    │
-│  SvelteKit app  ── /api/ingest ──▶ validate ─▶ Postgres ─▶ rule engine        │
-│                                              └─▶ live hub ─SSE─▶ dashboard     │
-└──────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph host["Linux host · VM in dev, VPS in prod · kernel ≥ 5.8"]
+        direction TB
+        probes["eBPF probes (C)<br/>execve · openat · connect"]
+        agent["Go agent — cilium/ebpf<br/>decode · enrich · batch"]
+        ingest["/api/ingest<br/>Zod-validated at the boundary"]
+        rules["rule engine"]
+        hub["live hub"]
+        db[("Postgres<br/>events · rules · alerts")]
+        dash["SvelteKit dashboard<br/>live feed · tree · overview"]
+
+        probes -- "ring buffer" --> agent
+        agent -- "HTTP POST · JSON (Zod contract)" --> ingest
+        ingest --> db
+        ingest --> rules
+        ingest --> hub
+        hub -- "SSE" --> dash
+    end
 ```
 
 **The key deployment constraint:** the agent needs a real kernel, so it
@@ -50,6 +76,30 @@ agent + app + Postgres on one host. See `SPEC.md` §2.
 ingest → DB → live-feed path runs in the browser today, driven by a synthetic
 event source that stands in for the not-yet-built agent. The Go/eBPF agent is
 next and must be developed inside the dev VM (never the host).
+
+## Dashboard views
+
+Depth on a few views beats breadth done shallowly — six crisp views, built in
+priority order (must-haves first).
+
+| View | The question it answers | Status |
+|---|---|---|
+| **Live activity feed** (8.1) | *What's happening right now?* | ✅ built |
+| **Process tree** (8.2) | *What spawned what?* | ◻️ planned (must-have) |
+| **Host overview** (8.6) | *One-screen status?* | ◻️ planned (must-have) |
+| **Network map** (8.3) | *What is this host talking to?* | ◻️ planned |
+| **Sensitive-file monitor** (8.4) | *Did anything touch the files that matter?* | ◻️ planned |
+| **Alerts & rules** (8.5) | *Tell me when something looks sketchy.* | ◻️ planned |
+
+## Roadmap
+
+- [x] **Phase 1 (app):** event schema · ingest · SSE hub · live feed · tests
+- [ ] **Phase 1 (agent):** `execve` probe → ring buffer → `cilium/ebpf` → `/api/ingest` *(in the VM)*
+- [ ] **Phase 2:** process-tree cache + tree view + host overview
+- [ ] **Phase 3:** file + connect probes · network map · file monitor · rule engine
+- [ ] **Phase 4:** Nix dev VM · `nixosTest` kernel integration test · GitHub Actions CI
+- [ ] **Phase 5:** VPS deploy (Terraform), agent + app + Postgres co-located
+- [ ] **Phase 6 (stretch):** timeline/history · LLM "explain this alert" · enforcement · multi-host
 
 ## Running the app (dev)
 

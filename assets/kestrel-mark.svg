@@ -1,0 +1,37 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Kestrel logo">
+  <defs>
+    <linearGradient id="accent" x1="16" y1="24" x2="112" y2="108" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6ee7b7"/>
+      <stop offset="0.55" stop-color="#34d399"/>
+      <stop offset="1" stop-color="#14b8a6"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#34d399" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#34d399" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- tile -->
+  <rect x="2" y="2" width="124" height="124" rx="28" fill="#0a0e12"/>
+  <rect x="2.5" y="2.5" width="123" height="123" rx="27.5" fill="none" stroke="#1f2937" stroke-width="1"/>
+
+  <!-- ambient glow -->
+  <circle cx="64" cy="64" r="42" fill="url(#glow)"/>
+
+  <!-- hexagon frame (security) -->
+  <path d="M64 14 L107 38 L107 86 L64 110 L21 86 L21 38 Z"
+        fill="none" stroke="#34d399" stroke-opacity="0.20" stroke-width="2"/>
+
+  <!-- radar / scan arcs (observability) -->
+  <circle cx="64" cy="64" r="34" fill="none" stroke="#34d399" stroke-opacity="0.16" stroke-width="1.5" stroke-dasharray="3 6"/>
+  <circle cx="64" cy="64" r="25" fill="none" stroke="#22d3ee" stroke-opacity="0.12" stroke-width="1.5" stroke-dasharray="2 7"/>
+
+  <!-- kestrel: swept pointed wings, small head, tapered tail (a raptor in flight) -->
+  <path d="M64 22
+           L69 38 L69 46
+           L112 68 L74 60
+           L72 72 L67 95 L64 107
+           L61 95 L56 72 L54 60
+           L16 68 L59 46 L59 38 Z"
+        fill="url(#accent)" stroke="#0a0e12" stroke-width="1.5" stroke-linejoin="round"/>
+</svg>
