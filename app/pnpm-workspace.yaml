@@ -1,0 +1,9 @@
+# Supply-chain policy: explicitly decide which dependency build scripts may run.
+# Neither needs to build here:
+#  - esbuild ships prebuilt platform binaries (@esbuild/linux-x64); its
+#    postinstall is just an optional verification step.
+#  - better-sqlite3 is not imported (we use PGlite); it only appears as one of
+#    drizzle-orm's optional peer drivers.
+allowBuilds:
+  better-sqlite3: false
+  esbuild: false

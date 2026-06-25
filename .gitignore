@@ -1,0 +1,6 @@
+# Per-component gitignores live in /app, /agent, /infra.
+*.db
+*.db-*
+result
+result-*
+.direnv
