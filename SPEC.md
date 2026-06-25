@@ -325,6 +325,20 @@ Agents on several hosts reporting to one dashboard; host selector + fleet
 overview. This is the jump toward what the cluster-native tools do — large
 scope, deliberately deferred.
 
+### 8.12 Kubernetes / DaemonSet deployment (FAR STRETCH)
+Package the agent to run as a privileged DaemonSet (one agent pod per node) so
+the tool extends from single-host to clustered Linux environments. This is the
+deployment model the established eBPF tools (Falco, Tetragon) use. Technical
+considerations to document: the agent pod needs elevated capabilities to load
+eBPF programs (`CAP_SYS_RESOURCE` for the `setrlimit`/`RLIMIT_MEMLOCK` bump on
+older kernels, `CAP_SYS_PTRACE` for reading `/proc/<pid>/` paths, host PID
+namespace via `hostPID`, and host network where relevant); events from all node
+agents flow to a shared dashboard backend; and the data model's existing
+host-belongs-to-account structure (Appendix A.6) already accommodates multiple
+hosts reporting in. Keep this firmly out of v1 — it's a multi-host concern
+layered on top of the single-host core, and the deliberate single-host design
+(§1 non-goals) remains the primary architecture. Builds on §8.11 (multi-host).
+
 ---
 
 ## 9. Phased roadmap

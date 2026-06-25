@@ -99,7 +99,7 @@ priority order (must-haves first).
 - [ ] **Phase 3:** file + connect probes · network map · file monitor · rule engine
 - [ ] **Phase 4:** Nix dev VM · `nixosTest` kernel integration test · GitHub Actions CI
 - [ ] **Phase 5:** VPS deploy (Terraform), agent + app + Postgres co-located
-- [ ] **Phase 6 (stretch):** timeline/history · LLM "explain this alert" · enforcement · multi-host
+- [ ] **Phase 6 (stretch):** timeline/history · LLM "explain this alert" · enforcement · multi-host · k8s DaemonSet
 
 ## Running the app (dev)
 
