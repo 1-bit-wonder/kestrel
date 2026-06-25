@@ -419,42 +419,78 @@ The README is part of the deliverable. Cover:
 ### A.1 The honest market reality
 
 The "nothing like this exists" framing does **not** survive research, and the
-spec should be honest about that:
+spec should be honest about that. Serious, well-resourced tools exist on
+**both** sides of the problem — but they split cleanly into two camps, and
+neither camp covers what Kestrel targets.
 
-- **The open-source core already exists and dominates.** Falco is
-  CNCF-graduated, free, 175M+ downloads, and explicitly runs on plain hosts —
-  not Kubernetes-only. It monitors hosts, containers, clusters, and cloud via
-  eBPF. The technology layer of this idea is effectively commoditized.
-- **eBPF runtime sensors already target standalone Linux/VMs**, not just
-  clusters (OX, Sysdig, Orca all deploy to EC2/Linux hosts).
-- **The commercial tier is saturated and well-funded:** Sysdig (founded by
-  Falco's creators), Aqua, Wiz, SentinelOne, Prisma/Palo Alto, Orca, ARMO,
-  Lacework, Red Hat/StackRox. This is one of the most contested areas in
-  security.
+**Observability side — good UI, no threat semantics.** These tools have figured
+out the UI/UX and run happily on a single host or VM:
 
-**Conclusion:** there is no technology whitespace. "Build it and they'll come
-because nothing exists" is not supported.
+- **Netdata** is the leading incumbent: open-source, per-second monitoring with
+  a built-in **eBPF collector** that runs on single hosts/VMs (kernel ≥ 4.11),
+  a polished point-and-click UI, ML-based anomaly detection, and an AI
+  "Co-Engineer" that explains issues in natural language.
+- **Pixie** is another good-UI, eBPF-based observability example.
+
+The key point: these answer *"is my host healthy / fast?"* via **aggregated
+metrics**. They do **not** model threats, ship security rules, or produce a
+**security event stream with provenance** — only graphs of CPU, latency, and
+throughput.
+
+**Security side — threat semantics, weak/no UI, Kubernetes-first.** These tools
+understand threats but assume a cluster and ship little or no frontend:
+
+- **Falco** (CNCF-graduated, the de facto standard): detection-only, **no
+  frontend of its own**, 175M+ downloads; runs on plain hosts but is documented
+  and shaped around Kubernetes.
+- **Tetragon** (Cilium / Cisco): detection **plus** in-kernel LSM enforcement,
+  tightly coupled to Cilium / Kubernetes.
+- **Tracee** (Aqua): forensic, MITRE ATT&CK–aligned event tracing.
+- **KubeArmor**: LSM-based enforcement.
+- Commercial: **Sysdig Secure** (founded by Falco's creators), **ARMO CADR** —
+  with a broader saturated, well-funded field behind them (Aqua, Wiz,
+  SentinelOne, Prisma/Palo Alto, Orca, Lacework, Red Hat/StackRox).
+
+The key pattern: these are **Kubernetes-first**. They deploy as DaemonSets,
+their rules reference pod / namespace / labels, and the entire product, docs,
+and mental model assume a cluster. They *can* run on a plain host, but they are
+not **shaped** for one.
+
+**Conclusion:** there is no technology whitespace — the eBPF, the detection, and
+the dashboards all exist. But they sit on **opposite sides of a divide**: the
+good UIs don't understand threats, and the threat tools don't fit a single host
+or ship a usable UI. "Build it and they'll come because nothing exists" is not
+supported.
 
 ### A.2 The real (narrower) gap
 
 The recurring complaint across the research is **not** "no tools exist" — it's
-that existing tools are **too complex, too enterprise, too noisy, and too
-Kubernetes-shaped for small operators**:
+that the tools that do exist sit on the wrong side of a divide for a small
+single-host operator. Kestrel's opening is the **intersection of three
+converging, evidence-backed gaps**:
 
-- Falco: powerful but steep learning curve, needs tuning at scale, and ships
-  **no UI of its own** (points users to paid enterprise UIs).
-- Commercial CNAPPs: enterprise pricing "challenging for smaller teams,"
-  platform breadth = complexity, alert fatigue without careful tuning.
-- Nearly the whole market assumes **Kubernetes-at-scale** (thousands of
-  workloads, multi-cluster, multi-cloud).
+1. **The UI gap on the security side.** Good UIs exist only on the
+   *observability* side (Netdata, Pixie) — and those lack threat semantics
+   entirely. The actual security tools (Falco, Tetragon, Tracee, KubeArmor)
+   ship weak or no UI. Nobody pairs a readable interface with a real security
+   event stream.
+2. **The non-Kubernetes gap.** Every serious security tool assumes a cluster —
+   DaemonSets, pod / namespace / label-scoped rules, cluster-shaped docs. The
+   single-VPS / homelab / small-Linux-host operator is genuinely underserved:
+   the tools *run* there, but nothing is *built* for there.
+3. **The simplicity / alert-fatigue gap.** The recurring industry complaint is
+   fragmentation and noise — *"more alerts, not better understanding."* A
+   focused single-host tool with plain-English explanations addresses this for
+   non-experts, who are precisely the people the enterprise tools leave behind.
 
 **The underserved segment is concrete:** individuals / small teams running a
 handful of plain Linux VPSes — indie hackers, small SaaS, agencies,
-homelabbers, single-app shops — who find Falco too fiddly, the enterprise
-CNAPPs too expensive and too cluster-centric, and just want *"tell me if
-something sketchy happens on my box, with a UI I can actually read."*
+homelabbers, single-app shops — who find Falco too fiddly and cluster-shaped,
+the enterprise CNAPPs too expensive, and just want *"tell me if something
+sketchy happens on my box, with a UI I can actually read."*
 
-The gap is in **packaging, simplicity, and price point — not capability.**
+The gap is in **packaging, audience, and simplicity — not detection
+capability.**
 
 ### A.3 The analogy that makes it credible
 
@@ -471,16 +507,23 @@ pricing for the small operator*, not detection sophistication.
   Compete on the experience Falco doesn't give and Sysdig won't sell cheaply.
 - **Target:** indie / SMB / agency Linux-VPS operators. **Explicitly NOT**
   Kubernetes-at-scale — do not try to out-Sysdig Sysdig.
-- **AI "explain this alert" (8.9) becomes a core differentiator, not a
-  flourish.** Alert fatigue and "low-level signals without clarity" is the #1
-  complaint in the research; plain-English explanations directly address it for
-  non-expert operators.
-- **Positioning:** "Runtime security for people who don't have a security team."
+- **AI "explain this alert" (8.9) is on-trend but differentiated.**
+  LLM-driven correlation is now a live industry trend (ARMO and Sysdig ship
+  correlation engines; Falco has its "Prempti" AI-agent work). Kestrel does
+  **not** claim to out-correlate them — the goal is narrower and distinct:
+  making *single-host* security **legible to non-experts** with plain-English
+  explanations. Alert fatigue and "low-level signals without clarity" is a
+  recurring complaint; this addresses it for operators without a security team.
+- **Positioning:** "Falco-class runtime-security detection, but
+  single-host-native (no Kubernetes) and with the readable UI plus
+  plain-English explanations the security tools don't ship."
 
 ### A.5 Risks (stated plainly)
 
 | Risk | Note |
 |---|---|
+| Serious, well-resourced incumbents exist | Both sides are mature — Netdata-class observability and Falco-class security. Claim novelty of **packaging and audience** (single-host, UI, simplicity), **not** novelty of detection capability — Falco's detection is mature and free. |
+| AI-correlation is a live trend | ARMO and Sysdig ship LLM correlation engines; Falco has its "Prempti" AI-agent work. Frame "explain this alert" as making single-host security **legible to non-experts**, not as competing with enterprise cross-layer correlation. |
 | Falco is free & capable | Caps pricing power; invites "why not just run Falco?" Answer must be UI + simplicity + defaults + support. |
 | Security SaaS demands trust | Compliance, reliability, on-call — heavy for a solo founder. |
 | Incumbents can move down-market | Sysdig et al. could target SMB. |
