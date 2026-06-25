@@ -95,6 +95,12 @@ sync; treat the schema in `SPEC.md` §6 as the contract.
 These are the intended commands; confirm they exist before relying on them.
 
 ```bash
+# --- Quick start (repo-root dispatcher) ---
+./kestrel dev           # start the app (frontend+backend) on the host → :5173
+                        #   KESTREL_SYNTHETIC=1 ./kestrel dev   # demo data (opt-in)
+./kestrel clean         # wipe the persisted dev DB (empty feed next run)
+./kestrel vm            # boot the dev VM (the agent auto-starts inside it)
+
 # --- App (run from /app) ---
 pnpm install
 pnpm dev                # SvelteKit dev server
@@ -108,11 +114,13 @@ pnpm lint               # eslint + prettier
 pnpm drizzle:generate   # generate migration from schema
 pnpm drizzle:migrate    # apply migrations
 
-# --- Agent (run from /agent, INSIDE THE VM) ---
-go generate ./...       # runs bpf2go to compile C + gen bindings
-go build ./...
-go test ./...
-sudo ./agent            # loads probes — VM ONLY, never the host
+# --- Agent (in the VM, it runs as a service that auto-builds on boot) ---
+journalctl -u kestrel-agent -f  # watch the running agent
+sudo systemctl restart kestrel-agent   # rebuild + restart after editing the probe
+# Manual build (host `nix develop` or in the VM; loading is VM ONLY):
+go generate ./...               # bpftool→vmlinux.h, then bpf2go compiles C (needs $BPF_CLANG)
+CGO_ENABLED=0 go build -o kestrel-agent .
+sudo ./kestrel-agent            # loads probes — VM ONLY; KESTREL_INGEST_URL overrides target
 
 # --- Infra (Nix flake at repo root) ---
 nix develop             # host devShell: go, clang, llvm, bpftool, libbpf, node, pnpm
@@ -188,8 +196,9 @@ When you add a real command, update this section so it stays accurate.
   (accounts→hosts→events/rules/alerts, multi-tenancy-ready), the Zod-validated
   ingest endpoint (`POST /api/ingest`), an SSE live hub (`GET /api/stream`),
   and the **live activity feed (8.1)**. A synthetic event generator
-  (`src/lib/server/synthetic.ts`, on by default in dev) drives the feed without
-  the agent. Verified: `pnpm check` (0/0), `pnpm test` (11 pass), `pnpm build`,
+  (`src/lib/server/synthetic.ts`) can drive the feed without the agent — it's
+  **opt-in** via `KESTREL_SYNTHETIC=1` (off by default, so mock data is never
+  confused with real events). Verified: `pnpm check` (0/0), `pnpm test` (11 pass), `pnpm build`,
   and a manual ingest→SSE→browser smoke test.
 - **DB note:** dev/test uses **PGlite** (WASM Postgres), not SQLite — the host
   has no C compiler (toolchain lives in the VM) so the native `better-sqlite3`
@@ -207,11 +216,20 @@ When you add a real command, update this section so it stays accurate.
   symlink layout corrupts across the 9p boundary. `node_modules` stays
   host-native. The agent ships events *outbound* to the host app at
   `http://10.0.2.2:5173/api/ingest` (`10.0.2.2` = host from the VM).
-- **Next (Phase 1 completion):** write the Go agent — C `execve` probe → ring
-  buffer → `cilium/ebpf`+`bpf2go` → POST batches to `/api/ingest`. Author in
-  `nix develop`; **load/run only in the VM** (Golden Rule #1). Then Phase 2:
-  process-tree cache + tree view (8.2) and host overview (8.6).
-- **Known gaps / TODO:** `/agent` is an empty stub (toolchain now exists for it);
-  `infra/terraform` + the `nixosTest` integration test are Phase 4; no rule
-  engine yet (8.5); no Playwright e2e yet; `pnpm dev` persists to
-  `./kestrel-pgdata` (gitignored).
+- **Agent (Phase 1 complete, compile-verified):** `/agent` has the C `execve`
+  probe (`bpf/exec.bpf.c`, CO-RE, emits pid/ppid/uid/comm/filename to a ringbuf),
+  the `cilium/ebpf`+`bpf2go` loader, and a batch→`POST /api/ingest` shipper
+  (`internal/ship`, JSON matches the Zod contract). Verified on the host in
+  `nix develop`: `go generate` (bpftool vmlinux.h + bpf2go/clang), `go build`,
+  `go vet` all clean. **Not yet run** — the verifier accepting the program +
+  the live VM→host event flow are VM-only (Golden Rule #1). bpf2go uses the
+  UNWRAPPED clang via `$BPF_CLANG` (the wrapped one injects flags clang rejects
+  for the bpf target). Generated files (`*_bpf*.go/.o`, `bpf/vmlinux.h`) are
+  gitignored — run `go generate` to (re)create them.
+- **Next (verify in VM, then Phase 2):** run the app on the host, `nix run .#vm`,
+  build+`sudo ./kestrel-agent` in the VM, confirm real execs hit the feed. Then
+  Phase 2: process-tree cache + tree view (8.2, ppid already captured) and host
+  overview (8.6); a `sched_process_exit` probe for process lifetimes.
+- **Known gaps / TODO:** `infra/terraform` + the `nixosTest` integration test are
+  Phase 4; no rule engine yet (8.5); no Playwright e2e yet; no agent unit tests
+  yet; `pnpm dev` persists to `./kestrel-pgdata` (gitignored).

@@ -27,15 +27,18 @@ kernel**. A privileged container is *not* a boundary; it shares the host kernel.
 nix develop                 # go, clang, llvm, bpftool, libbpf, node, pnpm
 
 # The app runs on the HOST (it needs no kernel; native FS keeps Vite fast):
-cd app && pnpm install && pnpm dev          # → http://localhost:5173
+./kestrel dev               # → http://localhost:5173  (wraps `cd app && pnpm dev`)
+./kestrel clean             # wipe the persisted dev DB so the feed starts empty
 
 # The agent runs in the VM (it needs a real kernel). Boot the throwaway VM:
-nix run .#vm                # = nixos-rebuild build-vm then ./result/bin/run-kestrel-dev-vm
+./kestrel vm                # = nix run .#vm (the agent auto-starts as a service)
 #   KESTREL_SRC=/path/to/checkout nix run .#vm   # if not running from the repo root
 ssh -p 2222 dev@localhost   # a real second terminal into the VM (password: dev)
 
-# Inside the VM (autologin as `dev`, passwordless sudo), repo at ~/kestrel:
-cd ~/kestrel/agent && go generate ./... && go build ./... && sudo ./agent   # probes — VM only
+# Inside the VM, the agent is a systemd service (auto-builds from ~/kestrel/agent
+# on boot, runs as root). Watch / restart it:
+journalctl -u kestrel-agent -f
+sudo systemctl restart kestrel-agent        # rebuild + restart after probe edits
 ```
 
 **The dev split:** the SvelteKit **app runs on the host**; only the **agent runs

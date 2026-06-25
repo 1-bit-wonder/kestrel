@@ -34,8 +34,12 @@
       # / `pnpm` here; you CANNOT `sudo ./agent` here (loads probes → VM only).
       devShells.${system}.default = pkgs.mkShell {
         packages = toolchain;
-        # libbpf headers live under $dev/include; expose for bpf2go's clang `-I`.
-        BPF_HEADERS = "${pkgs.libbpf}/include";
+        # bpf2go must use the UNWRAPPED clang: Nix's cc-wrapper injects host
+        # hardening flags (-fzero-call-used-regs, -fstack-protector) that clang
+        # rejects for the `bpfel` target. Referenced by `-cc $BPF_CLANG` in the
+        # agent's //go:generate. (Not added to PATH — it'd collide with the
+        # wrapped `clang`; the store-path reference pulls it into the closure.)
+        BPF_CLANG = "${pkgs.llvmPackages.clang-unwrapped}/bin/clang";
         shellHook = ''
           echo "▸ Kestrel devShell — go $(go version | cut -d' ' -f3), node $(node -v), pnpm $(pnpm -v)"
           echo "  Compiling probes here is fine. LOADING them is VM-only (CLAUDE.md Golden Rule #1):"

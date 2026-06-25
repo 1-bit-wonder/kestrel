@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Kestrel dev command runner. Run from anywhere: `./kestrel <command>`.
+#
+#   ./kestrel dev      Start the app (SvelteKit = frontend + backend in one
+#                      dev server) on the host → http://localhost:5173.
+#                      Synthetic demo data is opt-in: `KESTREL_SYNTHETIC=1 ./kestrel dev`.
+#   ./kestrel clean    Wipe the local real-events session (the persisted dev DB)
+#                      so the feed starts empty.
+#   ./kestrel vm       Boot the throwaway dev VM (the agent auto-starts inside it).
+#
+# The app runs on the HOST and the agent in the VM (see infra/README.md). This
+# script intentionally uses the ambient pnpm so it matches the committed lockfile.
+set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cmd="${1:-help}"
+shift || true
+
+case "$cmd" in
+dev | app)
+	cd "$here/app"
+	[ -d node_modules ] || pnpm install
+	exec pnpm dev "$@"
+	;;
+clean)
+	rm -rf "$here/app/kestrel-pgdata"
+	echo "Cleaned app/kestrel-pgdata — the feed starts empty on the next \`./kestrel dev\`."
+	;;
+vm)
+	cd "$here"
+	exec nix run .#vm "$@"
+	;;
+help | --help | -h)
+	sed -n '2,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+	;;
+*)
+	echo "unknown command: $cmd" >&2
+	echo "usage: ./kestrel {dev|clean|vm}" >&2
+	exit 1
+	;;
+esac

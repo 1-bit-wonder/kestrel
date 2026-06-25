@@ -30,6 +30,11 @@
     settings.PermitRootLogin = "no";
   };
 
+  # bpf2go compiles the probe with the UNWRAPPED clang (the Nix cc-wrapper
+  # injects host hardening flags clang rejects for the bpfel target). The agent's
+  # //go:generate references this as `-cc $BPF_CLANG`.
+  environment.sessionVariables.BPF_CLANG = "${pkgs.llvmPackages.clang-unwrapped}/bin/clang";
+
   # --- Toolchain available INSIDE the VM --------------------------------------
   # Mirrors the flake's host devShell, plus the bpftrace on-ramp (SPEC §4.5) for
   # proving the kernel layer end-to-end before the compiled agent exists.
@@ -92,17 +97,58 @@
   # keeps `nix run .#vm` headless-friendly.
   virtualisation.graphics = false;
 
+  # --- Agent as a managed service --------------------------------------------
+  # Builds the agent from the mounted source and runs it on boot — no manual
+  # `sudo ./kestrel-agent`. Watch it: `journalctl -u kestrel-agent -f`. It builds
+  # into the VM's tmpfs (NOT back over 9p) so generated files never touch the
+  # host tree. Heavy-ish first boot (go mod download + clang); if you'd rather
+  # drive it by hand: `sudo systemctl disable --now kestrel-agent`.
+  systemd.services.kestrel-agent = {
+    description = "Kestrel eBPF agent (execve tracer)";
+    wantedBy = [ "multi-user.target" ];
+    wants = [ "network-online.target" ];
+    after = [ "network-online.target" ];
+    path = with pkgs; [ go bpftools bash coreutils llvm ]; # llvm → llvm-strip (bpf2go strips the .o)
+    environment = {
+      BPF_CLANG = "${pkgs.llvmPackages.clang-unwrapped}/bin/clang";
+      KESTREL_INGEST_URL = "http://10.0.2.2:5173/api/ingest";
+      HOME = "/root";
+      GOTOOLCHAIN = "local"; # use the installed go; never fetch a toolchain
+      GOCACHE = "/tmp/kestrel-go/cache";
+      GOMODCACHE = "/tmp/kestrel-go/mod";
+      CGO_ENABLED = "0";
+    };
+    serviceConfig = {
+      Type = "exec";
+      RequiresMountsFor = "/home/dev/kestrel"; # wait for the 9p source mount
+      # Build a fresh copy in tmpfs so `go generate` never writes over 9p.
+      ExecStartPre = "${pkgs.writeShellScript "kestrel-agent-build" ''
+        set -euo pipefail
+        rm -rf /tmp/kestrel-agent-build
+        cp -a /home/dev/kestrel/agent /tmp/kestrel-agent-build
+        cd /tmp/kestrel-agent-build
+        go generate ./...
+        go build -o /tmp/kestrel-agent .
+      ''}";
+      ExecStart = "/tmp/kestrel-agent";
+      Restart = "on-failure"; # ride out a not-yet-ready network on first boot
+      RestartSec = 5;
+      TimeoutStartSec = 600; # first build downloads modules + compiles
+    };
+  };
+
   # First-boot login banner so the workflow is discoverable from the console.
   users.motd = ''
     Kestrel dev VM — this is for the eBPF AGENT, which needs a real kernel.
     The repo is mounted at ~/kestrel.
 
-      Agent:   cd ~/kestrel/agent && go generate ./... && go build ./... && sudo ./agent
+      Agent:   runs automatically as a service →  journalctl -u kestrel-agent -f
+               (rebuild/restart after edits: sudo systemctl restart kestrel-agent)
       On-ramp: sudo bpftrace -e 'tracepoint:syscalls:sys_enter_execve \
                  { printf("%s %d -> %s\n", comm, pid, str(args->filename)); }'
 
     Run the SvelteKit APP on the HOST, not here (it needs no kernel and 9p is
-    slow for Vite):  cd app && pnpm dev   →  http://localhost:5173
+    slow for Vite):  ./kestrel dev   →  http://localhost:5173
     The agent ships events to the host app at  http://10.0.2.2:5173/api/ingest
     (10.0.2.2 = the host, as seen from this VM).
 

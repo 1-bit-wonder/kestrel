@@ -7,8 +7,8 @@ import { ingestEvents } from './ingest';
  * real kernel; CLAUDE.md Golden Rule #1). It fabricates plausible kernel
  * events and pushes them through the same ingest path the agent will use.
  *
- * Enabled by default in dev; set KESTREL_SYNTHETIC=0 to disable, or =1 to
- * force it on in other environments.
+ * Opt-in: enable with KESTREL_SYNTHETIC=1 (e.g. to demo the dashboard without
+ * the agent/VM). Off otherwise, so mock data is never confused with real events.
  */
 
 const HOST = 'kestrel-dev';
@@ -113,5 +113,5 @@ async function tick() {
 export function startSyntheticSource(): void {
 	if (timer) return; // guard against SvelteKit dev double-import
 	timer = setTimeout(tick, 500);
-	console.log('[kestrel] synthetic event source started (set KESTREL_SYNTHETIC=0 to disable)');
+	console.log('[kestrel] synthetic event source started (KESTREL_SYNTHETIC=1)');
 }
