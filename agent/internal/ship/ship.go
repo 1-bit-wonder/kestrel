@@ -21,14 +21,15 @@ import (
 // stays simple. `host`/`type`/`pid`/`comm` are required by the schema; the rest
 // are optional (hence omitempty), except uid which we always have.
 type Event struct {
-	Host string `json:"host"`
-	Type string `json:"type"`
-	PID  uint32 `json:"pid"`
-	PPID uint32 `json:"ppid,omitempty"`
-	UID  uint32 `json:"uid"`
-	User string `json:"user,omitempty"`
-	Comm string `json:"comm"`
-	Exe  string `json:"exe,omitempty"`
+	Host    string `json:"host"`
+	Type    string `json:"type"`
+	PID     uint32 `json:"pid"`
+	PPID    uint32 `json:"ppid,omitempty"`
+	UID     uint32 `json:"uid"`
+	User    string `json:"user,omitempty"`
+	Comm    string `json:"comm"`
+	Exe     string `json:"exe,omitempty"`
+	Cmdline string `json:"cmdline,omitempty"`
 }
 
 // Shipper accumulates events and flushes them as JSON batches — on a size

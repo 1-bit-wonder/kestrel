@@ -1,5 +1,7 @@
 import { desc, eq } from 'drizzle-orm';
 import type { KestrelEvent } from '$lib/schema/event';
+import { buildProcessTree, type ProcNode } from '$lib/processTree';
+import { computeOverview, type OverviewStats } from '$lib/overview';
 import { db, schema, dbReady } from './db';
 import type { EventRow } from './db/schema';
 
@@ -37,4 +39,20 @@ export async function getRecentEvents(limit = 100): Promise<KestrelEvent[]> {
 		.limit(limit);
 
 	return rows.map((r) => rowToEvent(r.event, r.hostname));
+}
+
+/**
+ * Recent process-tree forest (SPEC §8.2), derived from the stored event stream.
+ * We pull a generous slice of recent events so parent execs are present for the
+ * children we show; the builder assembles the parent→child hierarchy.
+ */
+export async function getProcessTree(limit = 3000): Promise<ProcNode[]> {
+	const events = await getRecentEvents(limit);
+	return buildProcessTree(events);
+}
+
+/** One-screen host status (SPEC §8.6), computed from a recent event slice. */
+export async function getOverview(limit = 5000): Promise<OverviewStats> {
+	const events = await getRecentEvents(limit);
+	return computeOverview(events, Date.now());
 }

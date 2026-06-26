@@ -11,6 +11,7 @@ import { z } from 'zod';
 
 export const EVENT_TYPES = [
 	'exec', // process executed (the spine)
+	'exit', // process exited — completes a process lifetime (8.2 tree liveness)
 	'file_open', // file opened — sensitive-file monitor
 	'net_connect', // outbound connection — network map
 	'listen', // new listening socket

@@ -22,6 +22,7 @@ import (
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/cilium/ebpf/rlimit"
 
+	"kestrel/agent/internal/procscan"
 	"kestrel/agent/internal/ship"
 )
 
@@ -55,11 +56,17 @@ func main() {
 	}
 	defer objs.Close()
 
-	tp, err := link.Tracepoint("syscalls", "sys_enter_execve", objs.HandleExecve, nil)
+	tpExec, err := link.Tracepoint("syscalls", "sys_enter_execve", objs.HandleExecve, nil)
 	if err != nil {
 		log.Fatalf("attach execve tracepoint: %v", err)
 	}
-	defer tp.Close()
+	defer tpExec.Close()
+
+	tpExit, err := link.Tracepoint("sched", "sched_process_exit", objs.HandleExit, nil)
+	if err != nil {
+		log.Fatalf("attach sched_process_exit tracepoint: %v", err)
+	}
+	defer tpExit.Close()
 
 	rd, err := ringbuf.NewReader(objs.Events)
 	if err != nil {
@@ -80,6 +87,19 @@ func main() {
 
 	log.Printf("kestrel-agent: tracing execve on %q → %s", hostname, ingestURL)
 
+	// Seed the dashboard's process tree with everything already running: the
+	// execve probe only sees processes that exec AFTER it attaches, so without
+	// this the pre-existing ancestry (systemd → … → your shell) is missing and
+	// live execs render as disconnected roots (SPEC §8.2). Done after attach so
+	// we don't miss execs during the scan; the app upserts by pid, so a process
+	// that both appears here and execs live just refreshes its node.
+	snap := procscan.Snapshot()
+	for i := range snap {
+		snap[i].User = lookupUser(snap[i].UID)
+		shipper.Add(snap[i])
+	}
+	log.Printf("kestrel-agent: seeded %d running processes", len(snap))
+
 	var event execEvent
 	for {
 		record, err := rd.Read()
@@ -98,17 +118,30 @@ func main() {
 			continue
 		}
 
+		// `kind` discriminates the two probes sharing this ring buffer; an exit
+		// carries no executable path (SPEC §8.2 process lifecycle).
+		typ, exe := "exec", gostr(event.Filename[:])
+		if event.Kind == kindExit {
+			typ, exe = "exit", ""
+		}
+
 		shipper.Add(ship.Event{
-			Type: "exec",
+			Type: typ,
 			PID:  event.Pid,
 			PPID: event.Ppid,
 			UID:  event.Uid,
 			User: lookupUser(event.Uid),
 			Comm: gostr(event.Comm[:]),
-			Exe:  gostr(event.Filename[:]),
+			Exe:  exe,
 		})
 	}
 }
+
+// Event kinds — mirror the EVENT_EXEC/EVENT_EXIT constants in exec.bpf.c.
+const (
+	kindExec uint32 = 0
+	kindExit uint32 = 1
+)
 
 // gostr turns a fixed-size, NUL-padded C char array into a Go string.
 func gostr(b []byte) string {

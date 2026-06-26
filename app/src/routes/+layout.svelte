@@ -1,6 +1,13 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import '../app.css';
 	let { children } = $props();
+
+	const NAV = [
+		{ href: '/', label: 'Overview' },
+		{ href: '/feed', label: 'Live feed' },
+		{ href: '/processes', label: 'Processes' }
+	];
 </script>
 
 <div class="min-h-screen font-mono">
@@ -9,8 +16,17 @@
 			<img src="/favicon.svg" alt="" class="h-6 w-6" />
 			<span class="text-lg font-bold tracking-tight text-emerald-400">Kestrel</span>
 			<span class="text-xs text-zinc-500">single-host eBPF runtime security</span>
-			<nav class="ml-auto flex gap-4 text-sm text-zinc-400">
-				<a class="hover:text-zinc-100" href="/">Live feed</a>
+			<nav class="ml-auto flex gap-4 text-sm">
+				{#each NAV as item (item.href)}
+					{@const active =
+						item.href === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(item.href)}
+					<a
+						class="transition-colors hover:text-zinc-100"
+						class:text-emerald-400={active}
+						class:text-zinc-400={!active}
+						href={item.href}>{item.label}</a
+					>
+				{/each}
 			</nav>
 		</div>
 	</header>

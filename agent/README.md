@@ -4,9 +4,12 @@
 > Rule #1). A privileged container is *not* a safe boundary; it shares the host
 > kernel. Use a VM with its own kernel. Compiling is safe anywhere.
 
-Status: **Phase 1 — execve probe built.** Traces `sys_enter_execve`, ships
-`exec` events to the app's ingest endpoint, which renders them in the live feed
-([`/app`](../app)).
+Status: **Phase 2 — execve + exit probes built (compile-verified).** Traces
+`sys_enter_execve` (ships `exec` events) and `sched_process_exit` (ships `exit`
+events) to the app's ingest endpoint, which renders them in the live feed and
+uses the exec/exit pair to drive the process tree's liveness/lifetimes
+([`/app`](../app)). Both programs share one ring buffer, discriminated by a
+`kind` field on the event struct.
 
 ## Layout
 
@@ -14,7 +17,7 @@ Status: **Phase 1 — execve probe built.** Traces `sys_enter_execve`, ships
 /agent
   main.go              load probe, drain ring buffer, decode, enrich, ship
   bpf/
-    exec.bpf.c         the execve probe (CO-RE; emits {pid,ppid,uid,comm,filename})
+    exec.bpf.c         execve + sched_process_exit probes (CO-RE; emit {kind,pid,ppid,uid,comm,filename})
     headers/bpf/*.h    vendored libbpf program-side headers (self-contained build)
     vmlinux.h          generated from this kernel's BTF (gitignored)
   internal/ship/       batch + POST events to /api/ingest (matches the Zod schema)
@@ -47,7 +50,9 @@ that builds from `~/kestrel/agent` on boot — no manual step. Watch it with
 restart kestrel-agent` rebuilds and reloads. The manual commands above are for
 host compile-checks and ad-hoc runs.
 
-## Next (Phase 2)
+## Next (Phase 3)
 
-ppid is already captured, so the process-tree cache + tree view (SPEC 8.2) build
-on this. A `sched_process_exit` probe will let the agent track process lifetimes.
+The exec/exit + ppid spine now feeds the tree (8.2) and overview (8.6).
+Phase 3 adds security-credibility probes: `openat` (file-access monitor, 8.4),
+`tcp_connect`/`security_socket_connect` (network map, 8.3), and the rule engine
++ alerts (8.5).

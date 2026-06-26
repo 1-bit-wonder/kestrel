@@ -189,17 +189,35 @@ When you add a real command, update this section so it stays accurate.
 > Update this section as the project progresses so the agent always knows where
 > things stand.
 
-- **Phase:** 1 (core loop) — **app side built & verified**; **dev VM +
-  toolchain built** (Nix flake); agent code is the next thing to write.
-- **Working:** The SvelteKit app runs end-to-end. `/app` has the Zod event
-  schema (the agent↔app contract, `src/lib/schema/event.ts`), a Drizzle schema
-  (accounts→hosts→events/rules/alerts, multi-tenancy-ready), the Zod-validated
-  ingest endpoint (`POST /api/ingest`), an SSE live hub (`GET /api/stream`),
-  and the **live activity feed (8.1)**. A synthetic event generator
-  (`src/lib/server/synthetic.ts`) can drive the feed without the agent — it's
-  **opt-in** via `KESTREL_SYNTHETIC=1` (off by default, so mock data is never
-  confused with real events). Verified: `pnpm check` (0/0), `pnpm test` (11 pass), `pnpm build`,
-  and a manual ingest→SSE→browser smoke test.
+- **Phase:** 2 (must-haves complete, app side) — **app built & verified**
+  end-to-end (overview + feed + process tree); agent execve **and exit** probes
+  **compile-verified**; **VM run still pending** (Golden Rule #1).
+- **Working:** The SvelteKit app runs end-to-end with all three must-have views.
+  `/app` has the Zod event schema (the agent↔app contract,
+  `src/lib/schema/event.ts`, now incl. an `exit` lifecycle type), a Drizzle
+  schema (accounts→hosts→events/rules/alerts, multi-tenancy-ready), the
+  Zod-validated ingest endpoint (`POST /api/ingest`), and an SSE live hub
+  (`GET /api/stream`). Views (nav: Overview / Live feed / Processes):
+  - **Live feed (8.1)** at `/feed` — the original real-time table.
+  - **Host overview (8.6)** at `/` (landing) — events/sec, active processes,
+    connection count, alerts-last-hour, an event-rate sparkline, by-type
+    breakdown, and busiest processes. Pure compute in `src/lib/overview.ts`
+    (`computeOverview`, unit-tested); live via a client-side rolling buffer +
+    SSE that recomputes with the *same* pure function (single source of truth).
+  - **Process tree (8.2)** at `/processes` — parent→child forest **derived from
+    the event stream** (not an agent snapshot; SPEC §7 allows an app-side
+    `processes` view) in `src/lib/processTree.ts` (`buildProcessTree`,
+    unit-tested), laid out with **d3-hierarchy** and rendered as SVG by Svelte
+    (D3 = layout math, Svelte = DOM). Click a node → drill-down (status,
+    lifetime, user, ppid, children, activity counts). `exit` events give
+    liveness (running vs exited) and lifetimes.
+  The synthetic generator (`src/lib/server/synthetic.ts`) now maintains a
+  **coherent live process set** (children spawned from live parents, activity,
+  and exits) so the tree and overview have real structure — still **opt-in** via
+  `KESTREL_SYNTHETIC=1`. Verified: `pnpm check` (0/0), `pnpm test` (24 pass),
+  `pnpm lint`, `pnpm build`, and a manual SSR smoke test of all three routes
+  with synthetic data. Tests force an in-memory PGlite via `test.env` in
+  `vite.config.ts` so they never touch the on-disk dev DB.
 - **DB note:** dev/test uses **PGlite** (WASM Postgres), not SQLite — the host
   has no C compiler (toolchain lives in the VM) so the native `better-sqlite3`
   driver can't build here. PGlite needs no native build and gives real Postgres
@@ -216,20 +234,46 @@ When you add a real command, update this section so it stays accurate.
   symlink layout corrupts across the 9p boundary. `node_modules` stays
   host-native. The agent ships events *outbound* to the host app at
   `http://10.0.2.2:5173/api/ingest` (`10.0.2.2` = host from the VM).
-- **Agent (Phase 1 complete, compile-verified):** `/agent` has the C `execve`
-  probe (`bpf/exec.bpf.c`, CO-RE, emits pid/ppid/uid/comm/filename to a ringbuf),
-  the `cilium/ebpf`+`bpf2go` loader, and a batch→`POST /api/ingest` shipper
+- **Agent (Phase 2, compile-verified):** `bpf/exec.bpf.c` now carries **two
+  programs sharing one ring buffer**, discriminated by a `kind` field on the
+  event struct: `sys_enter_execve` (EVENT_EXEC: pid/ppid/uid/comm/filename) and
+  `sched_process_exit` (EVENT_EXIT: pid/ppid/uid/comm; emitted only for the
+  thread-group leader so it's one exit per process, not per thread). `main.go`
+  attaches both tracepoints and maps `kind`→`"exec"`/`"exit"` for the shipper
   (`internal/ship`, JSON matches the Zod contract). Verified on the host in
   `nix develop`: `go generate` (bpftool vmlinux.h + bpf2go/clang), `go build`,
-  `go vet` all clean. **Not yet run** — the verifier accepting the program +
-  the live VM→host event flow are VM-only (Golden Rule #1). bpf2go uses the
-  UNWRAPPED clang via `$BPF_CLANG` (the wrapped one injects flags clang rejects
-  for the bpf target). Generated files (`*_bpf*.go/.o`, `bpf/vmlinux.h`) are
-  gitignored — run `go generate` to (re)create them.
-- **Next (verify in VM, then Phase 2):** run the app on the host, `nix run .#vm`,
-  build+`sudo ./kestrel-agent` in the VM, confirm real execs hit the feed. Then
-  Phase 2: process-tree cache + tree view (8.2, ppid already captured) and host
-  overview (8.6); a `sched_process_exit` probe for process lifetimes.
+  `go vet`, `gofmt` all clean. **Not yet run** — the verifier accepting the
+  programs + the live VM→host flow are VM-only (Golden Rule #1). bpf2go uses the
+  UNWRAPPED clang via `$BPF_CLANG`. Generated files (`*_bpf*.go/.o`,
+  `bpf/vmlinux.h`) are gitignored — run `go generate` to (re)create them.
+- **Agent /proc snapshot (`internal/procscan`, compile+unit-verified):** at
+  startup the agent walks `/proc` and ships every live **userspace** process as
+  an `exec` event (pid/ppid/comm/exe/cmdline; kernel threads skipped). Without
+  this the execve probe only ever sees processes that exec *after* it attaches,
+  so pre-existing ancestry (systemd → … → your shell) is missing and live execs
+  render as disconnected roots — the process tree looked flat. The stat parser
+  is unit-tested (`procscan_test.go`); the live `/proc` read is host-safe (not
+  BPF). One-shot, so it's a small burst in the feed at agent start.
+- **UI label fix:** at `sys_enter_execve` the kernel `comm` is still the
+  *caller* (the spawning shell), not the new program; the real binary is in
+  `exe`. The tree/overview now label processes by `procName(e)` (exe basename,
+  falling back to comm) so `nano` shows as `nano`, not `bash`. The event-rate
+  sparkline is now a full-width (`width=100%`) bar histogram over a 60s/1s,
+  wall-clock-aligned window (was a 5min/30-bucket line that crawled and whose
+  fixed pixel width left the panel ¾ empty).
+- **Ingest perf + port pinning:** `lastSeen` host bumps are throttled
+  fire-and-forget and host ids resolved once per batch (was an awaited UPDATE
+  per event — the dashboard-lag cause). Vite is pinned to `strictPort: 5173` so
+  it fails loudly instead of silently bumping to 5174 and orphaning the agent's
+  hardcoded `10.0.2.2:5173` target.
+- **Next (verify in VM, then Phase 3):** run the app on the host, `nix run .#vm`,
+  build+`sudo ./kestrel-agent` in the VM, confirm real execs **and exits** drive
+  the feed/tree/overview. Then Phase 3 (security credibility): file-open +
+  connect probes, network map (8.3), file monitor (8.4), rule engine + alerts
+  (8.5) — the `alerts` card on the overview is wired to read 0 until then.
 - **Known gaps / TODO:** `infra/terraform` + the `nixosTest` integration test are
-  Phase 4; no rule engine yet (8.5); no Playwright e2e yet; no agent unit tests
-  yet; `pnpm dev` persists to `./kestrel-pgdata` (gitignored).
+  Phase 4; no rule engine yet (8.5, overview alerts hardcoded 0); **no Playwright
+  e2e yet** (deferred — browser install in the sandbox is unverified; unit
+  coverage carried Phase 2 instead); no agent unit tests yet; the process tree
+  derives from a recent event slice (no pruning of very old execs yet); `pnpm
+  dev` persists to `./kestrel-pgdata` (gitignored).
