@@ -1,0 +1,95 @@
+/* ==========================================================================
+   Kestrel — Design Tokens (canonical source of truth)
+   Single-host eBPF runtime security. Red palette.
+   Import this once at the app root, then reference via var(--k-*).
+   ========================================================================== */
+
+:root {
+	/* --- Brand reds ------------------------------------------------------- */
+	--k-strike: #d6342b; /* primary brand red · alerts · primary buttons */
+	--k-strike-600: #b82720; /* hover/pressed on primary */
+	--k-strike-700: #9a1e18; /* deep fills, active press */
+	--k-ember: #ff6b4a; /* live / active / accent — only for things in motion */
+	--k-ember-soft: #ff8a6b; /* link hover, focus glow */
+
+	/* --- Oxblood surfaces (dark, default theme) --------------------------- */
+	--k-bg: #160b0c; /* app background */
+	--k-surface: #1f0f10; /* panels, cards */
+	--k-surface-2: #2a1517; /* raised cards, popovers, table header */
+	--k-hairline: #3a1e20; /* borders, dividers */
+	--k-hairline-2: #4a2528; /* stronger borders, input outline */
+
+	/* --- Text ------------------------------------------------------------- */
+	--k-text: #f4ecea; /* primary text (bone) */
+	--k-text-dim: #c9b4b0; /* secondary text */
+	--k-text-mute: #9c8985; /* tertiary, captions, descriptors */
+	--k-text-faint: #6e5a57; /* disabled, placeholder */
+
+	/* --- Semantic status -------------------------------------------------- */
+	--k-alert: #d6342b; /* critical / blocked / high severity (= strike) */
+	--k-warn: #e8a13c; /* medium severity, caution */
+	--k-ok: #4fb286; /* benign / allowed / pass — the ONLY green, used sparingly */
+	--k-info: #5b9bd5; /* neutral informational */
+
+	/* severity tints (backgrounds behind status text/badges) */
+	--k-alert-bg: rgba(214, 52, 43, 0.14);
+	--k-warn-bg: rgba(232, 161, 60, 0.14);
+	--k-ok-bg: rgba(79, 178, 134, 0.12);
+	--k-info-bg: rgba(91, 155, 213, 0.12);
+
+	/* --- Typography ------------------------------------------------------- */
+	/* No trendy display faces. System/grotesque for UI, monospace for data. */
+	--k-font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+	--k-font-mono:
+		'JetBrains Mono', ui-monospace, 'SF Mono', 'Cascadia Code', 'DejaVu Sans Mono', Menlo, Consolas,
+		monospace;
+	/* Wordmark in the banner uses DejaVu Sans Bold, outlined to paths — the UI
+     itself does NOT need that font; the sans stack above is the product font. */
+
+	--k-fs-xs: 0.75rem; /* 12px — labels, badges */
+	--k-fs-sm: 0.8125rem; /* 13px — table/data rows (mono) */
+	--k-fs-base: 0.9375rem; /* 15px — body */
+	--k-fs-lg: 1.125rem; /* 18px — section titles */
+	--k-fs-xl: 1.5rem; /* 24px — page titles */
+	--k-fs-2xl: 2rem; /* 32px — hero numbers/metrics */
+
+	--k-lh-tight: 1.2;
+	--k-lh-base: 1.5;
+
+	/* --- Radius / spacing / elevation ------------------------------------ */
+	--k-radius-sm: 6px;
+	--k-radius: 9px;
+	--k-radius-lg: 14px;
+	--k-radius-pill: 999px;
+
+	--k-space-1: 4px;
+	--k-space-2: 8px;
+	--k-space-3: 12px;
+	--k-space-4: 16px;
+	--k-space-6: 24px;
+	--k-space-8: 32px;
+
+	--k-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+	--k-shadow-lg: 0 8px 28px rgba(0, 0, 0, 0.55);
+	--k-focus: 0 0 0 3px rgba(255, 107, 74, 0.4); /* ember focus ring */
+
+	/* --- Motion ----------------------------------------------------------- */
+	--k-ease: cubic-bezier(0.2, 0.6, 0.2, 1);
+	--k-dur: 140ms;
+}
+
+/* Optional light theme — only if the app needs one. Keep reds identical,
+   invert surfaces. Status greens still used sparingly. */
+:root[data-theme='light'] {
+	--k-bg: #fbf4f2;
+	--k-surface: #ffffff;
+	--k-surface-2: #f3e7e4;
+	--k-hairline: #e6d3cf;
+	--k-hairline-2: #d9c0bb;
+	--k-text: #1a0e0f;
+	--k-text-dim: #4a3633;
+	--k-text-mute: #7a625e;
+	--k-text-faint: #a98f8a;
+	--k-strike: #c42b23; /* nudge darker for contrast on light */
+	--k-strike-600: #a8211b;
+}

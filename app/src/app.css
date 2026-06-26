@@ -1,5 +1,32 @@
 @import 'tailwindcss';
+@import './tokens.css';
 
-@theme {
-	--font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+/* Kestrel red design system — map the canonical tokens (tokens.css) onto
+   Tailwind v4 color/font utilities. `inline` keeps the var() reference so a
+   single edit in tokens.css re-themes both raw CSS and Tailwind classes. */
+@theme inline {
+	--color-strike: var(--k-strike);
+	--color-strike-600: var(--k-strike-600);
+	--color-strike-700: var(--k-strike-700);
+	--color-ember: var(--k-ember);
+	--color-ember-soft: var(--k-ember-soft);
+
+	--color-bg: var(--k-bg);
+	--color-surface: var(--k-surface);
+	--color-surface-2: var(--k-surface-2);
+	--color-hairline: var(--k-hairline);
+	--color-hairline-2: var(--k-hairline-2);
+
+	--color-ktext: var(--k-text);
+	--color-ktext-dim: var(--k-text-dim);
+	--color-ktext-mute: var(--k-text-mute);
+	--color-ktext-faint: var(--k-text-faint);
+
+	--color-alert: var(--k-alert);
+	--color-warn: var(--k-warn);
+	--color-ok: var(--k-ok);
+	--color-info: var(--k-info);
+
+	--font-sans: var(--k-font-sans);
+	--font-mono: var(--k-font-mono);
 }

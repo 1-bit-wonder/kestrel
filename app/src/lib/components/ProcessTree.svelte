@@ -57,13 +57,13 @@
 </script>
 
 {#if layout.nodes.length === 0}
-	<div class="py-16 text-center text-zinc-600">No processes yet — waiting for exec events…</div>
+	<div class="py-16 text-center text-ktext-faint">No processes yet — waiting for exec events…</div>
 {:else}
-	<div class="overflow-auto rounded-lg border border-zinc-800 bg-zinc-900/30">
+	<div class="overflow-auto rounded-lg border border-hairline bg-surface/30">
 		<svg width={layout.width} height={layout.height} class="block">
 			<g>
 				{#each layout.links as l (l.d)}
-					<path d={l.d} fill="none" class="stroke-zinc-700" stroke-width="1" />
+					<path d={l.d} fill="none" class="stroke-hairline-2" stroke-width="1" />
 				{/each}
 				{#each layout.nodes as n (n.proc.pid)}
 					<g
@@ -76,20 +76,20 @@
 					>
 						<circle
 							r="4"
-							class:fill-emerald-400={!n.proc.exited}
-							class:fill-zinc-600={n.proc.exited}
-							class:stroke-amber-300={n.proc.pid === selectedPid}
+							class:fill-ember={!n.proc.exited}
+							class:fill-hairline-2={n.proc.exited}
+							class:stroke-strike={n.proc.pid === selectedPid}
 							stroke-width={n.proc.pid === selectedPid ? 2 : 0}
 						/>
 						<text
 							x="9"
 							y="3.5"
 							class="text-[11px]"
-							class:fill-zinc-200={!n.proc.exited}
-							class:fill-zinc-500={n.proc.exited}
+							class:fill-ktext={!n.proc.exited}
+							class:fill-ktext-mute={n.proc.exited}
 						>
 							{n.proc.name}
-							<tspan class="fill-zinc-600">·{n.proc.pid}</tspan>
+							<tspan class="fill-ktext-faint">·{n.proc.pid}</tspan>
 						</text>
 					</g>
 				{/each}

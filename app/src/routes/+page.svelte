@@ -54,13 +54,10 @@
 	<h1 class="text-xl font-semibold">Host overview</h1>
 	<span
 		class="inline-flex items-center gap-1.5 text-xs"
-		class:text-emerald-400={connected}
-		class:text-zinc-500={!connected}
+		class:text-ember={connected}
+		class:text-ktext-mute={!connected}
 	>
-		<span
-			class="h-2 w-2 rounded-full"
-			class:bg-emerald-400={connected}
-			class:bg-zinc-600={!connected}
+		<span class="h-2 w-2 rounded-full" class:bg-ember={connected} class:bg-hairline-2={!connected}
 		></span>
 		{connected ? 'live' : 'disconnected'}
 	</span>
@@ -68,37 +65,37 @@
 
 <div class="grid grid-cols-2 gap-3 pb-4 sm:grid-cols-4">
 	{#each cards as c (c.label)}
-		<div class="rounded-lg border border-zinc-800 bg-zinc-900/40 px-4 py-3">
-			<div class="text-2xl font-semibold tabular-nums text-zinc-100">{c.value}</div>
-			<div class="text-xs text-zinc-400">{c.label}</div>
-			<div class="text-[10px] uppercase tracking-wide text-zinc-600">{c.hint}</div>
+		<div class="rounded-lg border border-hairline bg-surface/40 px-4 py-3">
+			<div class="text-2xl font-semibold tabular-nums text-ktext">{c.value}</div>
+			<div class="text-xs text-ktext-mute">{c.label}</div>
+			<div class="text-[10px] uppercase tracking-wide text-ktext-faint">{c.hint}</div>
 		</div>
 	{/each}
 </div>
 
 <div class="grid grid-cols-1 gap-3 lg:grid-cols-3">
 	<!-- Event rate sparkline -->
-	<div class="rounded-lg border border-zinc-800 bg-zinc-900/40 px-4 py-3 lg:col-span-2">
+	<div class="rounded-lg border border-hairline bg-surface/40 px-4 py-3 lg:col-span-2">
 		<div class="flex items-baseline justify-between pb-2">
-			<span class="text-sm text-zinc-300">Event rate</span>
-			<span class="text-xs text-zinc-500">
+			<span class="text-sm text-ktext-dim">Event rate</span>
+			<span class="text-xs text-ktext-mute">
 				~{stats.eventsPerSec}/s · last {stats.sparkSeconds}s
 			</span>
 		</div>
-		<div class="text-emerald-400">
+		<div class="text-ember">
 			<Sparkline data={stats.sparkline} width={520} height={48} />
 		</div>
 	</div>
 
 	<!-- Events by type -->
-	<div class="rounded-lg border border-zinc-800 bg-zinc-900/40 px-4 py-3">
-		<div class="pb-2 text-sm text-zinc-300">By type</div>
+	<div class="rounded-lg border border-hairline bg-surface/40 px-4 py-3">
+		<div class="pb-2 text-sm text-ktext-dim">By type</div>
 		<ul class="space-y-1 text-sm">
 			{#each EVENT_TYPES as t (t)}
 				<li class="flex items-center gap-2">
 					<span class="h-1.5 w-1.5 rounded-full {TYPE_META[t].dot}"></span>
-					<span class="text-zinc-400">{TYPE_META[t].label}</span>
-					<span class="ml-auto tabular-nums text-zinc-300">{stats.byType[t]}</span>
+					<span class="text-ktext-mute">{TYPE_META[t].label}</span>
+					<span class="ml-auto tabular-nums text-ktext-dim">{stats.byType[t]}</span>
 				</li>
 			{/each}
 		</ul>
@@ -106,24 +103,24 @@
 </div>
 
 <!-- Busiest processes -->
-<div class="mt-3 rounded-lg border border-zinc-800 bg-zinc-900/40 px-4 py-3">
-	<div class="pb-2 text-sm text-zinc-300">Busiest processes</div>
+<div class="mt-3 rounded-lg border border-hairline bg-surface/40 px-4 py-3">
+	<div class="pb-2 text-sm text-ktext-dim">Busiest processes</div>
 	{#if stats.busiest.length}
 		<ul class="space-y-1.5">
 			{#each stats.busiest as b (b.comm)}
 				<li class="flex items-center gap-3 text-sm">
-					<span class="w-32 truncate text-zinc-200">{b.comm}</span>
-					<span class="h-2 flex-1 overflow-hidden rounded bg-zinc-800">
+					<span class="w-32 truncate text-ktext">{b.comm}</span>
+					<span class="h-2 flex-1 overflow-hidden rounded bg-surface-2">
 						<span
-							class="block h-full rounded bg-emerald-500/70"
+							class="block h-full rounded bg-ember/70"
 							style="width: {(b.count / maxBusy) * 100}%"
 						></span>
 					</span>
-					<span class="w-10 text-right tabular-nums text-zinc-400">{b.count}</span>
+					<span class="w-10 text-right tabular-nums text-ktext-mute">{b.count}</span>
 				</li>
 			{/each}
 		</ul>
 	{:else}
-		<div class="py-4 text-center text-sm text-zinc-600">Waiting for events…</div>
+		<div class="py-4 text-center text-sm text-ktext-faint">Waiting for events…</div>
 	{/if}
 </div>

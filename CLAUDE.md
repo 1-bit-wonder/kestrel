@@ -281,6 +281,16 @@ When you add a real command, update this section so it stays accurate.
   the new probes land.** Testing additions land here too: property-based tests
   (`fast-check`) for the rule engine + schema, and event-delivery checks (seq
   numbers + gap/dup detector + ingest-flood test) — see `SPEC.md` §7.
+- **Design system (red/oxblood, applied):** the old green (`emerald-*`) palette
+  was replaced by the **Kestrel red** identity. Canonical tokens live in
+  `app/src/tokens.css` (CSS vars `--k-*`), mapped to Tailwind v4 utilities via an
+  `@theme inline` block in `app/src/app.css` (`strike`/`ember`/`bg`/`surface`/
+  `hairline`/`ktext`/`alert`/`warn`/`ok`/`info`). Use those token classes, **not**
+  raw `zinc-*`/`emerald-*`, for any new UI. Brand+alerts = `strike` (#D6342B);
+  live/active = `ember`; green survives **only** as `--k-ok` (benign status).
+  Wordmark is lowercase `kestrel`. Assets: `assets/kestrel-{banner,mark}.svg`,
+  `app/static/favicon.svg` (oxblood tile) + `kestrel-mark.svg`. Source package:
+  `update-design.zip`.
 - **Known gaps / TODO:** `infra/terraform` + the `nixosTest` integration test are
   Phase 4; no rule engine yet (8.5, overview alerts hardcoded 0); **no Playwright
   e2e yet** (deferred — browser install in the sandbox is unverified; unit

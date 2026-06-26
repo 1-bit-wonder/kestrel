@@ -3,8 +3,8 @@ import type { EventType, KestrelEvent } from '$lib/schema/event';
 /** Client-safe presentation helpers for events (no server imports). */
 
 export const TYPE_META: Record<EventType, { label: string; color: string; dot: string }> = {
-	exec: { label: 'exec', color: 'text-emerald-300', dot: 'bg-emerald-400' },
-	exit: { label: 'exit', color: 'text-zinc-400', dot: 'bg-zinc-500' },
+	exec: { label: 'exec', color: 'text-ember', dot: 'bg-ember' },
+	exit: { label: 'exit', color: 'text-ktext-mute', dot: 'bg-ktext-faint' },
 	file_open: { label: 'file', color: 'text-amber-300', dot: 'bg-amber-400' },
 	net_connect: { label: 'net', color: 'text-sky-300', dot: 'bg-sky-400' },
 	listen: { label: 'listen', color: 'text-violet-300', dot: 'bg-violet-400' },

@@ -59,22 +59,19 @@
 	<h1 class="text-xl font-semibold">Process tree</h1>
 	<span
 		class="inline-flex items-center gap-1.5 text-xs"
-		class:text-emerald-400={connected}
-		class:text-zinc-500={!connected}
+		class:text-ember={connected}
+		class:text-ktext-mute={!connected}
 	>
-		<span
-			class="h-2 w-2 rounded-full"
-			class:bg-emerald-400={connected}
-			class:bg-zinc-600={!connected}
+		<span class="h-2 w-2 rounded-full" class:bg-ember={connected} class:bg-hairline-2={!connected}
 		></span>
 		{connected ? 'live' : 'disconnected'}
 	</span>
-	<span class="ml-auto flex items-center gap-3 text-xs text-zinc-500">
+	<span class="ml-auto flex items-center gap-3 text-xs text-ktext-mute">
 		<span class="inline-flex items-center gap-1.5"
-			><span class="h-2 w-2 rounded-full bg-emerald-400"></span>running</span
+			><span class="h-2 w-2 rounded-full bg-ember"></span>running</span
 		>
 		<span class="inline-flex items-center gap-1.5"
-			><span class="h-2 w-2 rounded-full bg-zinc-600"></span>exited</span
+			><span class="h-2 w-2 rounded-full bg-hairline-2"></span>exited</span
 		>
 	</span>
 </div>
@@ -83,71 +80,73 @@
 	<ProcessTree {roots} {selectedPid} onselect={(p) => (selectedPid = p.pid)} />
 
 	<!-- Drill-down panel (SPEC §8.2: click a node → its files, connections, lifetime) -->
-	<aside class="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 text-sm">
+	<aside class="rounded-lg border border-hairline bg-surface/40 p-4 text-sm">
 		{#if selected}
 			<div class="flex items-baseline gap-2 pb-3">
-				<span class="text-base font-semibold text-zinc-100">{selected.name}</span>
-				<span class="tabular-nums text-zinc-500">pid {selected.pid}</span>
+				<span class="text-base font-semibold text-ktext">{selected.name}</span>
+				<span class="tabular-nums text-ktext-mute">pid {selected.pid}</span>
 			</div>
 			<dl class="space-y-1.5 text-xs">
 				{#if selected.comm !== selected.name}
 					<div class="flex justify-between gap-2">
-						<dt class="text-zinc-500">spawned by</dt>
-						<dd class="text-zinc-300">{selected.comm}</dd>
+						<dt class="text-ktext-mute">spawned by</dt>
+						<dd class="text-ktext-dim">{selected.comm}</dd>
 					</div>
 				{/if}
 				<div class="flex justify-between gap-2">
-					<dt class="text-zinc-500">status</dt>
-					<dd class={selected.exited ? 'text-zinc-400' : 'text-emerald-300'}>
+					<dt class="text-ktext-mute">status</dt>
+					<dd class={selected.exited ? 'text-ktext-mute' : 'text-ember'}>
 						{selected.exited ? 'exited' : 'running'}
 					</dd>
 				</div>
 				<div class="flex justify-between gap-2">
-					<dt class="text-zinc-500">lifetime</dt>
-					<dd class="tabular-nums text-zinc-300">{lifetime(selected)}</dd>
+					<dt class="text-ktext-mute">lifetime</dt>
+					<dd class="tabular-nums text-ktext-dim">{lifetime(selected)}</dd>
 				</div>
 				<div class="flex justify-between gap-2">
-					<dt class="text-zinc-500">user</dt>
-					<dd class="text-zinc-300">{selected.user ?? selected.uid ?? '—'}</dd>
+					<dt class="text-ktext-mute">user</dt>
+					<dd class="text-ktext-dim">{selected.user ?? selected.uid ?? '—'}</dd>
 				</div>
 				<div class="flex justify-between gap-2">
-					<dt class="text-zinc-500">ppid</dt>
-					<dd class="tabular-nums text-zinc-300">{selected.ppid ?? '—'}</dd>
+					<dt class="text-ktext-mute">ppid</dt>
+					<dd class="tabular-nums text-ktext-dim">{selected.ppid ?? '—'}</dd>
 				</div>
 				<div class="flex justify-between gap-2">
-					<dt class="text-zinc-500">children</dt>
-					<dd class="tabular-nums text-zinc-300">{selected.children.length}</dd>
+					<dt class="text-ktext-mute">children</dt>
+					<dd class="tabular-nums text-ktext-dim">{selected.children.length}</dd>
 				</div>
 				<div class="flex justify-between gap-2">
-					<dt class="text-zinc-500">started</dt>
-					<dd class="tabular-nums text-zinc-300">{fmtTime(selected.firstSeen)}</dd>
+					<dt class="text-ktext-mute">started</dt>
+					<dd class="tabular-nums text-ktext-dim">{fmtTime(selected.firstSeen)}</dd>
 				</div>
 			</dl>
 
 			{#if selected.exe || selected.cmdline}
-				<div class="mt-3 break-all rounded bg-zinc-950/60 p-2 font-mono text-[11px] text-zinc-400">
+				<div class="mt-3 break-all rounded bg-bg/60 p-2 font-mono text-[11px] text-ktext-mute">
 					{selected.cmdline ?? selected.exe}
 				</div>
 			{/if}
 
 			{#if Object.keys(selected.counts).length}
 				<div class="mt-3">
-					<div class="pb-1 text-xs text-zinc-500">activity</div>
+					<div class="pb-1 text-xs text-ktext-mute">activity</div>
 					<ul class="space-y-1">
 						{#each Object.entries(selected.counts) as [type, count] (type)}
 							<li class="flex items-center gap-2 text-xs">
 								<span
 									class="h-1.5 w-1.5 rounded-full {TYPE_META[type as keyof typeof TYPE_META].dot}"
 								></span>
-								<span class="text-zinc-400">{TYPE_META[type as keyof typeof TYPE_META].label}</span>
-								<span class="ml-auto tabular-nums text-zinc-300">{count}</span>
+								<span class="text-ktext-mute"
+									>{TYPE_META[type as keyof typeof TYPE_META].label}</span
+								>
+								<span class="ml-auto tabular-nums text-ktext-dim">{count}</span>
 							</li>
 						{/each}
 					</ul>
 				</div>
 			{/if}
 		{:else}
-			<div class="py-8 text-center text-zinc-600">Select a process to inspect it.</div>
+			<div class="py-8 text-center text-ktext-faint">Select a process to inspect it.</div>
 		{/if}
 	</aside>
 </div>

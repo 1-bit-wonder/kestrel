@@ -11,7 +11,7 @@
 ![Postgres](https://img.shields.io/badge/Postgres-4169E1?logo=postgresql&logoColor=white)
 ![Tailwind](https://img.shields.io/badge/Tailwind-06B6D4?logo=tailwindcss&logoColor=white)
 ![Nix](https://img.shields.io/badge/Nix-5277C3?logo=nixos&logoColor=white)
-![status](https://img.shields.io/badge/status-Phase%202%20·%20must--haves%20complete-34d399)
+![status](https://img.shields.io/badge/status-Phase%202%20·%20must--haves%20complete-D6342B)
 
 <a href="#running-the-app-dev"><b>Quickstart</b></a> ·
 <a href="./SPEC.md"><b>Spec</b></a> ·
