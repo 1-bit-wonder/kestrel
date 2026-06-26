@@ -11,7 +11,7 @@
 ![Postgres](https://img.shields.io/badge/Postgres-4169E1?logo=postgresql&logoColor=white)
 ![Tailwind](https://img.shields.io/badge/Tailwind-06B6D4?logo=tailwindcss&logoColor=white)
 ![Nix](https://img.shields.io/badge/Nix-5277C3?logo=nixos&logoColor=white)
-![status](https://img.shields.io/badge/status-Phase%201%20·%20core%20loop-34d399)
+![status](https://img.shields.io/badge/status-Phase%202%20·%20must--haves%20complete-34d399)
 
 <a href="#running-the-app-dev"><b>Quickstart</b></a> ·
 <a href="./SPEC.md"><b>Spec</b></a> ·
@@ -66,16 +66,18 @@ agent + app + Postgres on one host. See `SPEC.md` §2.
 | Path | What |
 |---|---|
 | [`/app`](./app) | SvelteKit app — event schema, ingest, SSE hub, dashboard views. **Built & runnable.** |
-| [`/agent`](./agent) | Go userspace agent + eBPF C probes. *Runs in the VM only.* (stub) |
-| [`/infra`](./infra) | Nix dev VM + `nixosTest`, Terraform/libvirt provisioning. (stub) |
+| [`/agent`](./agent) | Go userspace agent + eBPF C probes (execve/exit) + `/proc` snapshot. **Built; runs in the VM only.** |
+| [`/infra`](./infra) | Nix dev VM (built) + `nixosTest`, Terraform/libvirt provisioning (Phase 4). |
 | [`SPEC.md`](./SPEC.md) | Authoritative product & architecture spec. |
 
 ## Status
 
-**Phase 1 — core loop, app side complete and verified.** The full
-ingest → DB → live-feed path runs in the browser today, driven by a synthetic
-event source that stands in for the not-yet-built agent. The Go/eBPF agent is
-next and must be developed inside the dev VM (never the host).
+**Phase 2 — must-haves complete, verified live in the VM.** The eBPF agent
+(`execve` + `exit` probes, cilium/ebpf) traces a real kernel and streams events
+to the app, driving the live feed, process tree, and host overview end-to-end.
+At startup the agent seeds the tree with a `/proc` snapshot of already-running
+processes. Phase 3 (file + connect probes, network map, file monitor, rule
+engine) is next. Probe work stays in the dev VM, never the host.
 
 ## Dashboard views
 
@@ -85,8 +87,8 @@ priority order (must-haves first).
 | View | The question it answers | Status |
 |---|---|---|
 | **Live activity feed** (8.1) | *What's happening right now?* | ✅ built |
-| **Process tree** (8.2) | *What spawned what?* | ◻️ planned (must-have) |
-| **Host overview** (8.6) | *One-screen status?* | ◻️ planned (must-have) |
+| **Process tree** (8.2) | *What spawned what?* | ✅ built |
+| **Host overview** (8.6) | *One-screen status?* | ✅ built |
 | **Network map** (8.3) | *What is this host talking to?* | ◻️ planned |
 | **Sensitive-file monitor** (8.4) | *Did anything touch the files that matter?* | ◻️ planned |
 | **Alerts & rules** (8.5) | *Tell me when something looks sketchy.* | ◻️ planned |
@@ -94,9 +96,9 @@ priority order (must-haves first).
 ## Roadmap
 
 - [x] **Phase 1 (app):** event schema · ingest · SSE hub · live feed · tests
-- [ ] **Phase 1 (agent):** `execve` probe → ring buffer → `cilium/ebpf` → `/api/ingest` *(in the VM)*
-- [ ] **Phase 2:** process-tree cache + tree view + host overview
-- [ ] **Phase 3:** file + connect probes · network map · file monitor · rule engine
+- [x] **Phase 1 (agent):** `execve` probe → ring buffer → `cilium/ebpf` → `/api/ingest` *(in the VM)*
+- [x] **Phase 2:** `exit` probe + `/proc` snapshot · process tree · host overview
+- [ ] **Phase 3:** file + connect probes · network map · file monitor · rule engine · server-side process-tree cache
 - [ ] **Phase 4:** Nix dev VM · `nixosTest` kernel integration test · GitHub Actions CI
 - [ ] **Phase 5:** VPS deploy (Terraform), agent + app + Postgres co-located
 - [ ] **Phase 6 (stretch):** timeline/history · LLM "explain this alert" · enforcement · multi-host · k8s DaemonSet
@@ -106,11 +108,12 @@ priority order (must-haves first).
 ```bash
 cd app
 pnpm install
-pnpm dev            # http://localhost:5173 — live feed with synthetic events
+pnpm dev            # http://localhost:5173
 ```
 
-A synthetic event generator is on by default in dev so the feed is alive
-without the agent. Disable it with `KESTREL_SYNTHETIC=0`.
+The app runs on the host; the agent runs in the dev VM and ships events to it.
+To see a populated feed without the agent, opt into the synthetic generator:
+`KESTREL_SYNTHETIC=1 pnpm dev`.
 
 ```bash
 pnpm check          # svelte-check (types)
@@ -133,6 +136,25 @@ curl -X POST http://localhost:5173/api/ingest -H 'content-type: application/json
   -d '[{"host":"demo","type":"exec","pid":42,"comm":"bash","cmdline":"bash -i"}]'
 ```
 
+## Testing & verification
+
+Three tiers, matched to where each class of bug lives (full detail in
+[`SPEC.md`](./SPEC.md) §6–§7):
+
+- **eBPF verifier — free.** The kernel proves every probe is memory-safe,
+  bounded, and terminating before it will load — the riskiest code in the
+  system, verified at load time for nothing.
+- **Property-based tests (Phase 3).** `fast-check` drives the Zod event contract
+  with adversarial/malformed events and asserts rule-engine invariants: no false
+  match, deterministic verdicts, malformed input rejected at the boundary.
+- **Event-delivery correctness (Phase 3).** Per-event sequence numbers + a client
+  gap/dup detector + an ingest-flood test assert every event crosses
+  ingest → SSE exactly once. (A formal TLA+ model was considered and
+  deliberately deferred — not justified at single-host volume.)
+
+Today: Vitest units (schema, ingest, overview, process tree) + the agent's
+`procscan` parser. Run `pnpm test` in `/app`.
+
 ## Design tradeoffs
 
 - **Single-host vs cluster** — deliberate scope choice; multi-host is a far
@@ -142,3 +164,6 @@ curl -X POST http://localhost:5173/api/ingest -H 'content-type: application/json
 - **`cilium/ebpf` vs `libbpfgo`** — pure Go, `CGO_ENABLED=0`, `bpf2go` workflow.
 - **PGlite/Postgres vs SQLite vs ClickHouse** — Postgres dialect everywhere;
   fine under ~1M events, revisit ClickHouse beyond that (`SPEC.md` §10).
+- **Verification for free** — the eBPF verifier statically proves every probe is
+  memory-safe, bounded, and terminating before the kernel will load it. The
+  riskiest code in the system is verified at load time at zero cost (`SPEC.md` §6).

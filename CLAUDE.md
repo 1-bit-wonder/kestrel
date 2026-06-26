@@ -150,7 +150,12 @@ When you add a real command, update this section so it stays accurate.
 - **Small, reviewable commits**, one concern each. Conventional-commit style
   messages (`feat:`, `fix:`, `chore:`, `test:`, `docs:`).
 - **Tests with behavior.** New rule-engine logic and event decoding get unit
-  tests. Don't add features to the dashboard without at least a smoke e2e.
+  tests. Don't add features to the dashboard without at least a smoke e2e. The
+  rule engine + event schema additionally get **property-based tests**
+  (`fast-check`) asserting invariants (no false match, deterministic verdicts,
+  malformed events rejected); the ingest→hub→SSE path gets sequence-number
+  gap/dup checks. See the three-tier strategy in `SPEC.md` §7 (tier 1, the eBPF
+  verifier, is free — §6).
 
 ---
 
@@ -189,9 +194,10 @@ When you add a real command, update this section so it stays accurate.
 > Update this section as the project progresses so the agent always knows where
 > things stand.
 
-- **Phase:** 2 (must-haves complete, app side) — **app built & verified**
-  end-to-end (overview + feed + process tree); agent execve **and exit** probes
-  **compile-verified**; **VM run still pending** (Golden Rule #1).
+- **Phase:** 2 **DONE & pushed** — must-haves complete and **verified live in the
+  VM** end-to-end (real execs/exits drive overview + feed + process tree; agent
+  loads both probes + ships a `/proc` startup snapshot). **Phase 3 is next**
+  (security credibility — see TODO).
 - **Working:** The SvelteKit app runs end-to-end with all three must-have views.
   `/app` has the Zod event schema (the agent↔app contract,
   `src/lib/schema/event.ts`, now incl. an `exit` lifecycle type), a Drizzle
@@ -266,14 +272,19 @@ When you add a real command, update this section so it stays accurate.
   per event — the dashboard-lag cause). Vite is pinned to `strictPort: 5173` so
   it fails loudly instead of silently bumping to 5174 and orphaning the agent's
   hardcoded `10.0.2.2:5173` target.
-- **Next (verify in VM, then Phase 3):** run the app on the host, `nix run .#vm`,
-  build+`sudo ./kestrel-agent` in the VM, confirm real execs **and exits** drive
-  the feed/tree/overview. Then Phase 3 (security credibility): file-open +
-  connect probes, network map (8.3), file monitor (8.4), rule engine + alerts
-  (8.5) — the `alerts` card on the overview is wired to read 0 until then.
+- **Next — Phase 3 (security credibility):** file-open + connect probes, network
+  map (8.3), file monitor (8.4), rule engine + alerts (8.5) — the `alerts` card
+  on the overview is wired to read 0 until then. Also in Phase 3+: the
+  **server-side process-tree cache** (SPEC §6) — replace today's window-derived
+  tree with a stateful cache updated at ingest; `buildProcessTree` stays the
+  canonical batch builder the cache must match. **Do not start the cache until
+  the new probes land.** Testing additions land here too: property-based tests
+  (`fast-check`) for the rule engine + schema, and event-delivery checks (seq
+  numbers + gap/dup detector + ingest-flood test) — see `SPEC.md` §7.
 - **Known gaps / TODO:** `infra/terraform` + the `nixosTest` integration test are
   Phase 4; no rule engine yet (8.5, overview alerts hardcoded 0); **no Playwright
   e2e yet** (deferred — browser install in the sandbox is unverified; unit
-  coverage carried Phase 2 instead); no agent unit tests yet; the process tree
-  derives from a recent event slice (no pruning of very old execs yet); `pnpm
-  dev` persists to `./kestrel-pgdata` (gitignored).
+  coverage carried Phase 2 instead); no agent decode unit tests yet (only
+  `procscan`); the process tree derives from a recent event slice (no pruning of
+  very old execs — the cache above is the fix); `pnpm dev` persists to
+  `./kestrel-pgdata` (gitignored).

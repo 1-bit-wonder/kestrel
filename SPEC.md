@@ -206,7 +206,9 @@ don't yak-shave provisioning before tracing a single syscall.
 3. Go agent: `rlimit.RemoveMemlock()` (kernels <5.11), load objects, attach via
    `link` subpackage, read ring buffer, decode events.
 4. Enrich in userspace: resolve PID→process metadata, container ID if present,
-   user, cmdline; maintain a process-tree cache from exec/exit events.
+   user, cmdline. (The process *tree* is assembled app-side — see the
+   Process-tree cache note below; the agent also seeds it via a `/proc`
+   snapshot at startup.)
 5. Batch + ship to SvelteKit ingest endpoint (HTTP POST for history, WS/SSE
    upstream for live). `CGO_ENABLED=0` keeps builds clean.
 
@@ -214,6 +216,16 @@ don't yak-shave provisioning before tracing a single syscall.
 Use BTF/CO-RE so the probe is portable across kernel versions; cilium/ebpf
 handles CO-RE relocations at load time (kernel BTF auto-loaded from
 `/sys/kernel/btf/vmlinux` on 5.2+). Saves recompiling per kernel.
+
+### Verification you get for free (the eBPF verifier)
+Before the kernel loads a probe, its in-kernel **verifier** statically proves the
+program is memory-safe, bounded, and terminating — no out-of-bounds access, no
+arbitrary pointer deref, no unbounded loops. That's genuine verification of the
+single riskiest component in the system, obtained for free at load time: a probe
+that could crash or hang the kernel simply won't attach. We treat this as a
+property the design *gets*, not work to do — the agent's job is to write probes
+the verifier accepts (CO-RE keeps that portable). It's tier 1 of the testing
+strategy in §7; the other two tiers are the ones we actually build.
 
 ### Event schema (shared contract: agent ↔ app)
 ```jsonc
@@ -238,6 +250,31 @@ handles CO-RE relocations at load time (kernel BTF auto-loaded from
 }
 ```
 
+### Process-tree cache (Phase 3+ — not yet built)
+As of Phase 2 the process tree is **derived on demand** from a sliding window of
+recent events: `buildProcessTree(events)` (a pure function) re-folds the last N
+events into a forest. Correct only within the window — a long-lived parent whose
+single `exec` has aged out of the slice loses its children (they render as
+disconnected roots), pre-existing processes can't carry real start times, and
+the forest is recomputed O(N) each tick with no single source of truth. The
+agent's `/proc` snapshot at startup masks this but doesn't solve it.
+
+The fix is a **stateful, server-side process-tree cache**: a model keyed by
+`(host, pid, generation)`, updated incrementally at the ingest boundary
+(`exec` upserts a node, `exit` marks it, activity bumps counts), seeded from the
+`/proc` snapshot with **real** start times, holding full ancestry until an
+exited node is reaped after a retention window. The Processes page reads a
+materialized snapshot for SSR and gets incremental tree deltas over SSE instead
+of re-folding raw events. Open questions: in-memory vs DB-backed `processes`
+table; pid-reuse generation key; reaping policy (surface it — no silent caps);
+drift/self-healing via periodic `/proc` re-snapshot + reconcile.
+
+**`buildProcessTree` stays the canonical batch builder** — used for the SSR
+seed, boot-time cache rebuild, and unit tests; the cache is its incremental
+sibling and MUST produce identical forests. Build it in **Phase 3+** alongside
+the file/net probes, whose higher event volume makes the window-eviction problem
+bite sooner — exactly when the cache earns its keep.
+
 ---
 
 ## 7. The web app (SvelteKit)
@@ -257,6 +294,29 @@ handles CO-RE relocations at load time (kernel BTF auto-loaded from
 Drizzle schema → types flow into server routes and components for end-to-end
 type safety. Tables: `events`, `rules`, `alerts`, `hosts` (forward-looking),
 optional `processes` snapshot/materialized cache.
+
+### Testing & verification strategy
+Three tiers, matched to where each class of bug actually lives:
+
+1. **eBPF verifier — free** (see §6). The kernel proves probe
+   memory-safety/termination at load: the agent's riskiest code is verified
+   before it runs. A property we get, not work we do.
+2. **Property-based tests on the rule engine + event schema — build in Phase 3.**
+   Drive `fast-check` through the existing Zod event contract to generate
+   adversarial/malformed events and assert invariants: a rule never matches when
+   its condition is false, matching is deterministic (same event → same verdict),
+   and malformed events are rejected cleanly at the boundary. Sits alongside the
+   existing Vitest unit tests and lands with the rule engine (§8.5).
+3. **Event-delivery correctness on ingest → hub → SSE — lightweight.** The worry
+   is a dropped or duplicated event between arrival and the browser. Chosen
+   approach: a per-host monotonic **sequence number** on each event, a small
+   client-side gap/dup detector, and an integration test that floods the ingest
+   path and asserts every sequence number arrives exactly once.
+   *Considered and deferred:* a formal **TLA+** model of this path. A legitimate
+   fit, but the cost isn't justified at single-host event volumes — especially
+   since the planned `/proc` re-snapshot reconcile loop (§6) already self-heals
+   the occasional drop. Revisit only if we go multi-host / high-volume. (Recorded
+   as a decision, not a TODO — same spirit as the Vagrant/Ansible notes in §5.)
 
 ---
 
@@ -354,14 +414,23 @@ Each phase ends with something that *works* — never all-backend-then-all-front
 - SvelteKit ingest endpoint + Postgres + SSE → **live activity feed (8.1)**.
 - Deliverable: real kernel events appear live in a browser. This is the proof.
 
-**Phase 2 — Process tree + overview (must-haves complete)**
-- Agent maintains process-tree cache from exec/exit. **Process tree (8.2)**.
+**Phase 2 — Process tree + overview (must-haves complete) — ✅ DONE**
+- `exit` probe added; **process tree (8.2)** derived app-side from exec/exit via
+  `buildProcessTree`; agent seeds existing processes via a `/proc` snapshot.
 - **Host overview (8.6)** with summary counts + sparklines.
-- Vitest unit tests for the rule/decode logic; first Playwright e2e.
+- Vitest unit tests for decode/overview/tree logic. (Playwright e2e deferred.)
+- Verified live in the VM: real execs/exits drive feed/tree/overview.
 
-**Phase 3 — Security credibility**
+**Phase 3 — Security credibility — ◀ NEXT**
 - Add file-open + connect probes. **Network map (8.3)**, **file monitor (8.4)**.
 - **Rule engine + alerts panel (8.5)** with the starter rules.
+- **Server-side process-tree cache** (see §6) — replace the window-derived tree
+  with a stateful cache; `buildProcessTree` remains the batch builder it matches.
+- **Property-based tests** (`fast-check`) for the rule engine + event schema (§7),
+  landing with the rule engine.
+- **Event-delivery checks** (§7): per-event sequence numbers + a client gap/dup
+  detector + an ingest-flood integration test (every seq arrives exactly once).
+- Carry-over from Phase 2: Playwright e2e, agent decode unit tests.
 
 **Phase 4 — IaC + tests (infra signal)**
 - Terraform/libvirt provisioning for the VM. NixOS `nixosTest` integration test
