@@ -11,7 +11,7 @@
 ![Postgres](https://img.shields.io/badge/Postgres-4169E1?logo=postgresql&logoColor=white)
 ![Tailwind](https://img.shields.io/badge/Tailwind-06B6D4?logo=tailwindcss&logoColor=white)
 ![Nix](https://img.shields.io/badge/Nix-5277C3?logo=nixos&logoColor=white)
-![status](https://img.shields.io/badge/status-Phase%202%20·%20must--haves%20complete-D6342B)
+![status](https://img.shields.io/badge/status-Phase%203%20·%20in%20progress-D6342B)
 
 <a href="#running-the-app-dev"><b>Quickstart</b></a> ·
 <a href="./SPEC.md"><b>Spec</b></a> ·
@@ -66,18 +66,21 @@ agent + app + Postgres on one host. See `SPEC.md` §2.
 | Path | What |
 |---|---|
 | [`/app`](./app) | SvelteKit app — event schema, ingest, SSE hub, dashboard views. **Built & runnable.** |
-| [`/agent`](./agent) | Go userspace agent + eBPF C probes (execve/exit) + `/proc` snapshot. **Built; runs in the VM only.** |
+| [`/agent`](./agent) | Go userspace agent + eBPF C probes (execve/exit/openat/connect) + `/proc` snapshot. **Built; runs in the VM only.** |
 | [`/infra`](./infra) | Nix dev VM (built) + `nixosTest`, Terraform/libvirt provisioning (Phase 4). |
 | [`SPEC.md`](./SPEC.md) | Authoritative product & architecture spec. |
 
 ## Status
 
-**Phase 2 — must-haves complete, verified live in the VM.** The eBPF agent
-(`execve` + `exit` probes, cilium/ebpf) traces a real kernel and streams events
-to the app, driving the live feed, process tree, and host overview end-to-end.
-At startup the agent seeds the tree with a `/proc` snapshot of already-running
-processes. Phase 3 (file + connect probes, network map, file monitor, rule
-engine) is next. Probe work stays in the dev VM, never the host.
+**Phase 3 — in progress.** Phase 2 must-haves (live feed, process tree, host
+overview) are complete and verified live in the VM: the eBPF agent (`execve` +
+`exit`, cilium/ebpf) traces a real kernel and streams events to the app, seeding
+the tree with a `/proc` snapshot at startup. Phase 3 so far: the agent gained
+**file-open (`openat`) and outbound-connection (`security_socket_connect`)
+probes** (compile-verified; load-test pending in the VM), and the **network map
+(8.3)** is built — a D3 force-directed process↔destination graph. Next up: the
+sensitive-file monitor (8.4) and the rule engine + alerts (8.5). Probe work
+stays in the dev VM, never the host.
 
 ## Dashboard views
 
@@ -89,7 +92,7 @@ priority order (must-haves first).
 | **Live activity feed** (8.1) | *What's happening right now?* | ✅ built |
 | **Process tree** (8.2) | *What spawned what?* | ✅ built |
 | **Host overview** (8.6) | *One-screen status?* | ✅ built |
-| **Network map** (8.3) | *What is this host talking to?* | ◻️ planned |
+| **Network map** (8.3) | *What is this host talking to?* | ✅ built |
 | **Sensitive-file monitor** (8.4) | *Did anything touch the files that matter?* | ◻️ planned |
 | **Alerts & rules** (8.5) | *Tell me when something looks sketchy.* | ◻️ planned |
 
@@ -98,7 +101,7 @@ priority order (must-haves first).
 - [x] **Phase 1 (app):** event schema · ingest · SSE hub · live feed · tests
 - [x] **Phase 1 (agent):** `execve` probe → ring buffer → `cilium/ebpf` → `/api/ingest` *(in the VM)*
 - [x] **Phase 2:** `exit` probe + `/proc` snapshot · process tree · host overview
-- [ ] **Phase 3:** file + connect probes · network map · file monitor · rule engine · server-side process-tree cache
+- [~] **Phase 3:** ✅ file + connect probes · ✅ network map · ◻️ file monitor · ◻️ rule engine + alerts · ◻️ server-side process-tree cache · ◻️ property + event-delivery tests
 - [ ] **Phase 4:** Nix dev VM · `nixosTest` kernel integration test · GitHub Actions CI
 - [ ] **Phase 5:** VPS deploy (Terraform), agent + app + Postgres co-located
 - [ ] **Phase 6 (stretch):** timeline/history · LLM "explain this alert" · enforcement · multi-host · k8s DaemonSet
@@ -152,8 +155,9 @@ Three tiers, matched to where each class of bug lives (full detail in
   ingest → SSE exactly once. (A formal TLA+ model was considered and
   deliberately deferred — not justified at single-host volume.)
 
-Today: Vitest units (schema, ingest, overview, process tree) + the agent's
-`procscan` parser. Run `pnpm test` in `/app`.
+Today: Vitest units (schema, ingest, overview, process tree, network graph) +
+the agent's `procscan` parser and event `decode` helpers. Run `pnpm test` in
+`/app`, `go test ./...` in `/agent`.
 
 ## Design tradeoffs
 

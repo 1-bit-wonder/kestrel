@@ -22,6 +22,7 @@ import (
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/cilium/ebpf/rlimit"
 
+	"kestrel/agent/internal/decode"
 	"kestrel/agent/internal/procscan"
 	"kestrel/agent/internal/ship"
 )
@@ -31,8 +32,12 @@ import (
 //  2. bpf2go compiles exec.bpf.c with clang and generates the typed loader
 //     (execObjects/loadExecObjects) plus the `execEvent` decode struct.
 //
+// -D__TARGET_ARCH_x86 picks the register layout for bpf_tracing.h's PT_REGS
+// macros (used by BPF_KPROBE in the connect probe). The project targets x86_64
+// hosts (dev VM + VPS); CO-RE still relocates field offsets across kernels.
+//
 //go:generate sh -c "bpftool btf dump file /sys/kernel/btf/vmlinux format c > bpf/vmlinux.h"
-//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc $BPF_CLANG -type event exec bpf/exec.bpf.c -- -I bpf/headers -I bpf
+//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc $BPF_CLANG -type event exec bpf/exec.bpf.c -- -I bpf/headers -I bpf -D__TARGET_ARCH_x86
 
 func main() {
 	log.SetFlags(log.Ltime)
@@ -68,6 +73,22 @@ func main() {
 	}
 	defer tpExit.Close()
 
+	// File opens → sensitive-file monitor (8.4). The probe emits every openat;
+	// we filter to the watch list below before shipping.
+	tpOpenat, err := link.Tracepoint("syscalls", "sys_enter_openat", objs.HandleOpenat, nil)
+	if err != nil {
+		log.Fatalf("attach sys_enter_openat tracepoint: %v", err)
+	}
+	defer tpOpenat.Close()
+
+	// Outbound connections → network map (8.3). security_socket_connect is the
+	// LSM hook covering TCP+UDP, IPv4+IPv6, before the connection leaves.
+	kpConnect, err := link.Kprobe("security_socket_connect", objs.HandleConnect, nil)
+	if err != nil {
+		log.Fatalf("attach security_socket_connect kprobe: %v", err)
+	}
+	defer kpConnect.Close()
+
 	rd, err := ringbuf.NewReader(objs.Events)
 	if err != nil {
 		log.Fatalf("open ringbuf reader: %v", err)
@@ -85,7 +106,7 @@ func main() {
 		rd.Close()
 	}()
 
-	log.Printf("kestrel-agent: tracing execve on %q → %s", hostname, ingestURL)
+	log.Printf("kestrel-agent: tracing exec/exit/open/connect on %q → %s", hostname, ingestURL)
 
 	// Seed the dashboard's process tree with everything already running: the
 	// execve probe only sees processes that exec AFTER it attaches, so without
@@ -99,6 +120,13 @@ func main() {
 		shipper.Add(snap[i])
 	}
 	log.Printf("kestrel-agent: seeded %d running processes", len(snap))
+
+	// Don't trace ourselves. The agent POSTs every batch to the ingest endpoint,
+	// so the connect probe would see its own outbound connection (~2/sec) plus
+	// its own file opens — pure feedback noise that would dominate the network
+	// map. Like Falco/Tetragon, we drop events from our own pid. (The startup
+	// /proc snapshot still emits the agent once, so it shows as an idle node.)
+	selfPID := uint32(os.Getpid())
 
 	var event execEvent
 	for {
@@ -118,29 +146,54 @@ func main() {
 			continue
 		}
 
-		// `kind` discriminates the two probes sharing this ring buffer; an exit
-		// carries no executable path (SPEC §8.2 process lifecycle).
-		typ, exe := "exec", gostr(event.Filename[:])
-		if event.Kind == kindExit {
-			typ, exe = "exit", ""
+		if event.Pid == selfPID {
+			continue // our own activity — see selfPID above.
 		}
 
-		shipper.Add(ship.Event{
-			Type: typ,
+		// `kind` discriminates the probes sharing this ring buffer. The common
+		// identity fields are the same for every kind; the type-specific fields
+		// are filled per branch below.
+		e := ship.Event{
 			PID:  event.Pid,
 			PPID: event.Ppid,
 			UID:  event.Uid,
 			User: lookupUser(event.Uid),
 			Comm: gostr(event.Comm[:]),
-			Exe:  exe,
-		})
+		}
+
+		switch event.Kind {
+		case kindExec:
+			e.Type, e.Exe = "exec", gostr(event.Filename[:])
+		case kindExit:
+			e.Type = "exit"
+		case kindFileOpen:
+			// The probe ships every openat; only sensitive paths reach the feed.
+			path := gostr(event.Filename[:])
+			if !decode.Watched(path) {
+				continue
+			}
+			e.Type, e.FilePath, e.Flags = "file_open", path, decode.FileOpenFlags(event.OpenFlags)
+		case kindNetConnect:
+			dest := decode.FormatIP(event.Family, event.Daddr4, event.Daddr6)
+			proto := decode.Proto(event.Proto)
+			if dest == "" || proto == "" {
+				continue // unexpected family/proto — schema requires both.
+			}
+			e.Type, e.DestIP, e.DestPort, e.Proto = "net_connect", dest, decode.Port(event.Dport), proto
+		default:
+			continue // unknown kind — forward-compat with a newer probe.
+		}
+
+		shipper.Add(e)
 	}
 }
 
-// Event kinds — mirror the EVENT_EXEC/EVENT_EXIT constants in exec.bpf.c.
+// Event kinds — mirror the EVENT_* constants in exec.bpf.c.
 const (
-	kindExec uint32 = 0
-	kindExit uint32 = 1
+	kindExec       uint32 = 0
+	kindExit       uint32 = 1
+	kindFileOpen   uint32 = 2
+	kindNetConnect uint32 = 3
 )
 
 // gostr turns a fixed-size, NUL-padded C char array into a Go string.

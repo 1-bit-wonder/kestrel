@@ -6,7 +6,8 @@
 	const NAV = [
 		{ href: '/', label: 'Overview' },
 		{ href: '/feed', label: 'Live feed' },
-		{ href: '/processes', label: 'Processes' }
+		{ href: '/processes', label: 'Processes' },
+		{ href: '/network', label: 'Network' }
 	];
 </script>
 

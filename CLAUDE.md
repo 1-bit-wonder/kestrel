@@ -194,16 +194,18 @@ When you add a real command, update this section so it stays accurate.
 > Update this section as the project progresses so the agent always knows where
 > things stand.
 
-- **Phase:** 2 **DONE & pushed** — must-haves complete and **verified live in the
-  VM** end-to-end (real execs/exits drive overview + feed + process tree; agent
-  loads both probes + ships a `/proc` startup snapshot). **Phase 3 is next**
-  (security credibility — see TODO).
+- **Phase:** 3 **IN PROGRESS** — Phase 2 must-haves done & verified live in the
+  VM. Phase 3 slices landed so far: **(1)** agent **file-open + connect probes**
+  (compile-verified on host; **VM load pending**), **(2)** **network map (8.3)**
+  built & verified. Remaining: file monitor (8.4), rule engine + alerts (8.5),
+  server-side process-tree cache, property-based + event-delivery tests — see the
+  "Next" bullet below.
 - **Working:** The SvelteKit app runs end-to-end with all three must-have views.
   `/app` has the Zod event schema (the agent↔app contract,
   `src/lib/schema/event.ts`, now incl. an `exit` lifecycle type), a Drizzle
   schema (accounts→hosts→events/rules/alerts, multi-tenancy-ready), the
   Zod-validated ingest endpoint (`POST /api/ingest`), and an SSE live hub
-  (`GET /api/stream`). Views (nav: Overview / Live feed / Processes):
+  (`GET /api/stream`). Views (nav: Overview / Live feed / Processes / Network):
   - **Live feed (8.1)** at `/feed` — the original real-time table.
   - **Host overview (8.6)** at `/` (landing) — events/sec, active processes,
     connection count, alerts-last-hour, an event-rate sparkline, by-type
@@ -220,10 +222,10 @@ When you add a real command, update this section so it stays accurate.
   The synthetic generator (`src/lib/server/synthetic.ts`) now maintains a
   **coherent live process set** (children spawned from live parents, activity,
   and exits) so the tree and overview have real structure — still **opt-in** via
-  `KESTREL_SYNTHETIC=1`. Verified: `pnpm check` (0/0), `pnpm test` (24 pass),
-  `pnpm lint`, `pnpm build`, and a manual SSR smoke test of all three routes
-  with synthetic data. Tests force an in-memory PGlite via `test.env` in
-  `vite.config.ts` so they never touch the on-disk dev DB.
+  `KESTREL_SYNTHETIC=1` (it also emits file_open/net_connect/listen). Verified:
+  `pnpm check` (0/0), `pnpm test` (31 pass), `pnpm lint`, `pnpm build`, and an
+  SSR smoke test of all routes. Tests force an in-memory PGlite via `test.env`
+  in `vite.config.ts` so they never touch the on-disk dev DB.
 - **DB note:** dev/test uses **PGlite** (WASM Postgres), not SQLite — the host
   has no C compiler (toolchain lives in the VM) so the native `better-sqlite3`
   driver can't build here. PGlite needs no native build and gives real Postgres
@@ -252,6 +254,30 @@ When you add a real command, update this section so it stays accurate.
   programs + the live VM→host flow are VM-only (Golden Rule #1). bpf2go uses the
   UNWRAPPED clang via `$BPF_CLANG`. Generated files (`*_bpf*.go/.o`,
   `bpf/vmlinux.h`) are gitignored — run `go generate` to (re)create them.
+- **Agent (Phase 3, compile-verified):** two more programs on the shared ring
+  buffer — `sys_enter_openat` (EVENT_FILE_OPEN: path + raw open flags) and a
+  **kprobe on `security_socket_connect`** (EVENT_NET_CONNECT: TCP+UDP, IPv4+IPv6
+  dest ip/port/proto, read via CO-RE). `struct event` gained
+  `open_flags/family/dport/proto/daddr4[4]/daddr6[16]`. New pure, **unit-tested**
+  `internal/decode` package: open-flags→string, `ntohs`, IP formatting, proto
+  map, and the **sensitive-path watch list** that gates which file_open events
+  ship — filtering is *userspace policy* so the eBPF stays minimal (the probe
+  emits every openat; the agent drops non-watched paths). The agent also **drops
+  its own pid** — otherwise its ingest POST self-reports a `net_connect` every
+  flush (~2/s of pure feedback noise). bpf2go now needs `-D__TARGET_ARCH_x86`
+  (BPF_KPROBE's PT_REGS macros). Verified on host: `go generate`/`build`/`vet`/
+  `gofmt` + `go test` (decode + procscan). **VM-load pending** — the verifier
+  accepting the new programs + the live flow are VM-only (Golden Rule #1).
+- **Network map (8.3, built & verified):** `/network` — a bipartite
+  process↔destination(`ip:port`) force-directed graph. Pure
+  `src/lib/networkGraph.ts` (`buildNetworkGraph`, **6 unit tests**) folds
+  `net_connect` events into nodes + weighted edges; `NetworkMap.svelte` lays it
+  out with **d3-force** (a *persistent* sim that nudges on live updates rather
+  than reshuffling; client-only, SSR shows a placeholder) rendered as SVG (D3 =
+  math, Svelte = DOM — same split as the tree). Live via `SSE ?type=net_connect`;
+  click a node → drill-down ("why is THAT process talking to THAT address?").
+  **TCP/UDP only by design** — ICMP (`ping`) is excluded (no port; not a
+  connection). Verified `pnpm check`/`test`/`build`/`lint` + SSR smoke (all 200).
 - **Agent /proc snapshot (`internal/procscan`, compile+unit-verified):** at
   startup the agent walks `/proc` and ships every live **userspace** process as
   an `exec` event (pid/ppid/comm/exe/cmdline; kernel threads skipped). Without
@@ -272,15 +298,16 @@ When you add a real command, update this section so it stays accurate.
   per event — the dashboard-lag cause). Vite is pinned to `strictPort: 5173` so
   it fails loudly instead of silently bumping to 5174 and orphaning the agent's
   hardcoded `10.0.2.2:5173` target.
-- **Next — Phase 3 (security credibility):** file-open + connect probes, network
-  map (8.3), file monitor (8.4), rule engine + alerts (8.5) — the `alerts` card
-  on the overview is wired to read 0 until then. Also in Phase 3+: the
-  **server-side process-tree cache** (SPEC §6) — replace today's window-derived
-  tree with a stateful cache updated at ingest; `buildProcessTree` stays the
-  canonical batch builder the cache must match. **Do not start the cache until
-  the new probes land.** Testing additions land here too: property-based tests
-  (`fast-check`) for the rule engine + schema, and event-delivery checks (seq
-  numbers + gap/dup detector + ingest-flood test) — see `SPEC.md` §7.
+- **Next — Phase 3 (remaining):** file monitor (8.4), then rule engine + alerts
+  (8.5) — the overview `alerts` card reads 0 until then — then the **server-side
+  process-tree cache** (SPEC §6): replace today's window-derived tree with a
+  stateful cache updated at ingest, seeded by the `/proc` snapshot so ancestry
+  never ages out; `buildProcessTree` stays the canonical batch builder the cache
+  must match. (Window-eviction now bites harder under Phase 3 volume — exactly
+  as SPEC §6 predicted; deferred for now after the agent self-pid filter relieved
+  the dominant noise.) Testing: property-based tests (`fast-check`) for the rule
+  engine + schema, and event-delivery checks (per-event seq numbers + client
+  gap/dup detector + ingest-flood test) — see `SPEC.md` §7.
 - **Design system (red/oxblood, applied):** the old green (`emerald-*`) palette
   was replaced by the **Kestrel red** identity. Canonical tokens live in
   `app/src/tokens.css` (CSS vars `--k-*`), mapped to Tailwind v4 utilities via an
@@ -294,7 +321,9 @@ When you add a real command, update this section so it stays accurate.
 - **Known gaps / TODO:** `infra/terraform` + the `nixosTest` integration test are
   Phase 4; no rule engine yet (8.5, overview alerts hardcoded 0); **no Playwright
   e2e yet** (deferred — browser install in the sandbox is unverified; unit
-  coverage carried Phase 2 instead); no agent decode unit tests yet (only
-  `procscan`); the process tree derives from a recent event slice (no pruning of
-  very old execs — the cache above is the fix); `pnpm dev` persists to
-  `./kestrel-pgdata` (gitignored).
+  coverage carried so far); the new **file/connect probes are compile-verified
+  only — not yet loaded in the VM**; the process tree still derives from a recent
+  event slice (window-eviction worsens with Phase 3 volume — the cache above is
+  the fix); `pnpm dev` persists to `./kestrel-pgdata` (gitignored) — a **corrupt**
+  store 500s *every* route (top-level `await dbReady` in `hooks.server.ts`),
+  recover with `./kestrel clean` + restart.

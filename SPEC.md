@@ -421,16 +421,20 @@ Each phase ends with something that *works* — never all-backend-then-all-front
 - Vitest unit tests for decode/overview/tree logic. (Playwright e2e deferred.)
 - Verified live in the VM: real execs/exits drive feed/tree/overview.
 
-**Phase 3 — Security credibility — ◀ NEXT**
-- Add file-open + connect probes. **Network map (8.3)**, **file monitor (8.4)**.
-- **Rule engine + alerts panel (8.5)** with the starter rules.
-- **Server-side process-tree cache** (see §6) — replace the window-derived tree
+**Phase 3 — Security credibility — ◀ IN PROGRESS**
+- ✅ file-open (`openat`) + connect (`security_socket_connect`) probes added to
+  the agent (compile-verified on host; VM load-test pending). ✅ **Network map
+  (8.3)** — D3 force-directed process↔destination graph. ◻️ **file monitor (8.4)**.
+- ◻️ **Rule engine + alerts panel (8.5)** with the starter rules.
+- ◻️ **Server-side process-tree cache** (see §6) — replace the window-derived tree
   with a stateful cache; `buildProcessTree` remains the batch builder it matches.
-- **Property-based tests** (`fast-check`) for the rule engine + event schema (§7),
+  (Window-eviction now bites under the higher Phase 3 event volume, as predicted.)
+- ◻️ **Property-based tests** (`fast-check`) for the rule engine + event schema (§7),
   landing with the rule engine.
-- **Event-delivery checks** (§7): per-event sequence numbers + a client gap/dup
+- ◻️ **Event-delivery checks** (§7): per-event sequence numbers + a client gap/dup
   detector + an ingest-flood integration test (every seq arrives exactly once).
-- Carry-over from Phase 2: Playwright e2e, agent decode unit tests.
+- Carry-over from Phase 2: ◻️ Playwright e2e; ✅ agent decode unit tests
+  (`internal/decode`).
 
 **Phase 4 — IaC + tests (infra signal)**
 - Terraform/libvirt provisioning for the VM. NixOS `nixosTest` integration test

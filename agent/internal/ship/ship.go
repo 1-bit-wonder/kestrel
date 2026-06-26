@@ -30,6 +30,15 @@ type Event struct {
 	Comm    string `json:"comm"`
 	Exe     string `json:"exe,omitempty"`
 	Cmdline string `json:"cmdline,omitempty"`
+
+	// type-specific — file_open (SPEC §8.4)
+	FilePath string `json:"file_path,omitempty"`
+	Flags    string `json:"flags,omitempty"`
+
+	// type-specific — net_connect (SPEC §8.3)
+	DestIP   string `json:"dest_ip,omitempty"`
+	DestPort uint16 `json:"dest_port,omitempty"`
+	Proto    string `json:"proto,omitempty"`
 }
 
 // Shipper accumulates events and flushes them as JSON batches — on a size
