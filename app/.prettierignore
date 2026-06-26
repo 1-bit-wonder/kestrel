@@ -1,0 +1,9 @@
+# Generated / vendored — not ours to format
+pnpm-lock.yaml
+
+# Build output & framework-generated dirs
+.svelte-kit/
+build/
+
+# Local dev data
+kestrel-pgdata/
